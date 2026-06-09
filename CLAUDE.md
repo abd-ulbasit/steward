@@ -4,9 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-GoPlatform is a learning-focused Kubernetes operator built with kubebuilder v4. It provisions in-cluster infrastructure (databases, caches, queues) via a custom `Application` CRD using existing operators (CloudNativePG, Redis, RabbitMQ). Currently in Phase 2 of 3 (Real-World Operator), milestone 6 next.
+GoPlatform is a learning-focused Kubernetes operator built with kubebuilder v4. It provisions in-cluster infrastructure (databases, caches, queues) via a custom `Application` CRD using existing operators (CloudNativePG, Redis, RabbitMQ). Phase 2 of 3 (Real-World Operator) complete (M1-M9 done); Phase 3 (M10-M12) deferred as not needed for the portfolio.
 
-**Primary goal:** Learn Kubernetes operator patterns deeply. AI writes production code; the developer reads every line to learn.
+**Primary goal:** Build deep Kubernetes operator expertise through AI-driven (agentic) development. The AI implements all code — core domain logic included; the developer directs the work, makes design decisions, reviews output, and learns by reading and reasoning about the result rather than typing it.
+
+***REMOVED***
 
 ## Common Commands
 
@@ -84,15 +86,37 @@ Do not delete `// +kubebuilder:scaffold:*` comments — the CLI injects code at 
 
 ## Code Style & Conventions
 
-### Learning-Focused Comments
+### Coding Approach: AI-Driven (Agentic) Development
 
-This project is built for learning. AI writes production code; the developer reads every line to learn K8s/operator patterns deeply. Key expectations:
+**The AI writes all code.** This is an agentic-development project — the developer does not hand-write implementation code. The AI implements everything; the developer's role is direction, decisions, and review.
 
-- **Rich inline comments**: Every significant function explains WHY (not just what), HOW it works under the hood, ALTERNATIVES considered with tradeoffs, and FAILURE MODES
+**What the AI writes (everything):**
+- Controller reconciliation logic
+- Provider implementations
+- Webhook validation rules
+- Drift detection logic
+- Test assertions and setup
+- Any business/domain logic
+- Kubebuilder scaffolding, CRD/RBAC manifests, Dockerfile, Makefile targets
+
+**What the developer does:**
+- Sets goals and acceptance criteria for each milestone
+- Makes design/architecture decisions when the AI surfaces trade-offs
+- Reviews and approves the AI's plans and output
+- Builds understanding by reading and reasoning about the code, asking the AI to explain anything unclear
+
+**How the AI should work here:**
+- Default to implementing fully — do not ask the developer to write code, and do not leave "developer writes this" stubs or fading-comment placeholders.
+- Still surface meaningful decisions (design alternatives, irreversible actions, ambiguous requirements) for the developer to choose, rather than silently guessing.
+- Keep the rich explanatory comments and educational explanations (see Comment Standards) — the developer learns by reading, so the *why* matters more than ever.
+- Verify before claiming done: build, run tests, show evidence.
+
+### Comment Standards
+
+- **Rich inline comments** on complex logic: explain WHY, HOW, ALTERNATIVES, TRADEOFFS, FAILURE MODES
 - **ASCII diagrams in comments**: Visualize flows, state machines, decision tables
 - **Compare with real platforms**: Reference how Backstage, Crossplane, Terraform Cloud, AWS ACK solve similar problems
 - **No TODOs or scaffolding**: Implement fully with proper error handling
-- **Present architectural options**: Use table format with tradeoffs, let the developer choose before implementing
 
 ### Go Standards
 
@@ -101,9 +125,33 @@ This project is built for learning. AI writes production code; the developer rea
 - Structured logging: `log := log.FromContext(ctx); log.Info("msg", "key", val)`
 - Idempotent reconciliation: Safe to call Reconcile multiple times with same input
 
+## Working Style & Communication (Developer Preferences)
+
+Salvaged from the developer's prior working-style notes — durable preferences, not project trivia.
+
+**Developer background:** Working knowledge of Kubernetes, Go, and AWS — not deep expertise. Pitch explanations simple-terms-first, then technical depth. The developer learns by *reading* the code and its comments, so the WHY carries the lesson (this is why rich comments and explanatory responses matter here).
+
+**Decision points — present, don't presume:** Before implementing anything significant (CRD/API design, state/architecture trade-offs), present 2-3 options as a trade-off table with a recommended choice and reasoning, then wait for the developer to choose. Routine or mechanical work doesn't need this ceremony.
+
+**Communication:**
+- Concise for simple queries; detailed for new or unfamiliar concepts.
+- Challenge questionable architecture — push back with reasoning rather than agreeing by default.
+- Technical accuracy only — no marketing language.
+- No emojis unless the developer requests them.
+
+**Documentation restraint:** Don't spawn summary/review/demo markdown files unprompted. Prefer rich inline comments. Standalone docs are warranted only when the developer asks or a milestone deliverable explicitly requires one (e.g. `docs/observability.md` for M8).
+
+## Remaining Work
+
+**What's left to finish ***REMOVED***:**
+- ~~Task 1: Complete PrometheusRule generation in monitoring.go~~ ✅ done (M8)
+- ~~Task 2: Add drift detection (new drift.go)~~ ✅ done (M9)
+- Task 3: Fix webhook cross-field validation
+- Task 4: E2E enhancement + Kind demo script
+
 ## Project Milestones
 
-12 milestones across 3 phases. Currently at M6. Track progress in `PROGRESS.md`. Phases:
+12 milestones across 3 phases. Track progress in `PROGRESS.md`. Phases:
 - Phase 1: Solid Foundation (M1-M5) ✅
-- Phase 2: Real-World Operator (M6-M9) — current
-- Phase 3: Advanced Patterns (M10-M12)
+- Phase 2: Real-World Operator (M6-M9) ✅ complete
+- Phase 3: Advanced Patterns (M10-M12) — deferred, not needed for portfolio

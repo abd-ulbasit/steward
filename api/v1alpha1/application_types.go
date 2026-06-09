@@ -968,4 +968,11 @@ const (
 	ConditionTypeQueueReady = "QueueReady"
 	// ConditionTypeStorageReady indicates storage is provisioned.
 	ConditionTypeStorageReady = "StorageReady"
+	// ConditionTypeMonitoringReady indicates monitoring resources (ServiceMonitor, PrometheusRule) are configured.
+	ConditionTypeMonitoringReady = "MonitoringReady"
+	// ConditionTypeDriftDetected indicates external drift was found this reconcile.
+	// It is True on a pass where a child resource was corrected (or infrastructure
+	// drift was detected) without a corresponding spec change, and False once the
+	// observed state matches desired state again.
+	ConditionTypeDriftDetected = "DriftDetected"
 )

@@ -1149,10 +1149,11 @@ func (p *KubernetesProvider) reconcileStorage(ctx context.Context, app *platform
 
 	phase := ResourceProvisioning
 	message := "storage provisioning"
-	if pvc.Status.Phase == corev1.ClaimBound {
+	switch pvc.Status.Phase {
+	case corev1.ClaimBound:
 		phase = ResourceReady
 		message = "storage ready"
-	} else if pvc.Status.Phase == corev1.ClaimPending {
+	case corev1.ClaimPending:
 		phase = ResourceReady
 		message = "storage pending (waiting for first consumer)"
 	}
@@ -1200,10 +1201,11 @@ func (p *KubernetesProvider) getStorageStatus(ctx context.Context, app *platform
 
 	phase := ResourceProvisioning
 	message := "storage provisioning"
-	if pvc.Status.Phase == corev1.ClaimBound {
+	switch pvc.Status.Phase {
+	case corev1.ClaimBound:
 		phase = ResourceReady
 		message = "storage ready"
-	} else if pvc.Status.Phase == corev1.ClaimPending {
+	case corev1.ClaimPending:
 		phase = ResourceReady
 		message = "storage pending (waiting for first consumer)"
 	}

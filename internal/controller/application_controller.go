@@ -148,6 +148,7 @@ import (
 	"strings"
 	"time"
 
+	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
@@ -278,6 +279,12 @@ type ApplicationReconciler struct {
 	//
 	// If nil, the controller will lazily create a default factory.
 	ProviderFactory *provider.Factory
+
+	// DiscoveryClient checks which API resources are available in the cluster.
+	// Used to detect if Prometheus operator CRDs (ServiceMonitor, PrometheusRule)
+	// are installed before attempting to create monitoring resources.
+	// If nil, monitoring resource creation is skipped.
+	DiscoveryClient DiscoveryInterface
 }
 
 // =============================================================================
@@ -315,6 +322,10 @@ type ApplicationReconciler struct {
 // +kubebuilder:rbac:groups=databases.spotahome.com,resources=redisfailovers,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=rabbitmq.com,resources=rabbitmqclusters,verbs=get;list;watch;create;update;patch;delete
 
+// RBAC for Prometheus operator monitoring resources (ServiceMonitor, PrometheusRule)
+// +kubebuilder:rbac:groups=monitoring.coreos.com,resources=servicemonitors,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=monitoring.coreos.com,resources=prometheusrules,verbs=get;list;watch;create;update;patch;delete
+
 // RBAC for PVCs and Pods managed/observed by KubernetesProvider
 // +kubebuilder:rbac:groups=core,resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=pods,verbs=get;list
@@ -349,20 +360,18 @@ type ApplicationReconciler struct {
 //  6. Return result (requeue or done)
 func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	// =========================================================================
-	// STEP 0: SETUP LOGGING
+	// STEP 0: SETUP LOGGING + METRICS TIMING
 	// =========================================================================
 	//
 	// Structured logging with request context. Every log line includes:
 	//   - namespace/name of the Application
 	//   - reconcileID for tracing this specific reconcile
 	//
-	// WHY STRUCTURED LOGGING:
-	//   - Machine-parseable (grep, Loki, Datadog)
-	//   - Consistent format across all reconciles
-	//   - Adds context without string formatting
+	// We also start a timer for the reconcile duration metric.
 	//
 	// =========================================================================
 
+	reconcileStart := time.Now()
 	logger := log.FromContext(ctx)
 	logger.Info("starting reconciliation")
 
@@ -390,10 +399,13 @@ func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			// they should have been handled by the finalizer before deletion
 			// actually happened. Safe to ignore.
 			logger.Info("application not found, likely deleted")
+			recordReconcileDuration(req.Name, req.Namespace, "not_found", time.Since(reconcileStart).Seconds())
 			return ctrl.Result{}, nil
 		}
 		// Real error (network, RBAC, etc.). Requeue with backoff.
 		logger.Error(err, "failed to fetch application")
+		incrementReconcileErrors(req.Name, req.Namespace, "fetch_failed")
+		recordReconcileDuration(req.Name, req.Namespace, "error", time.Since(reconcileStart).Seconds())
 		return ctrl.Result{}, err
 	}
 
@@ -431,7 +443,18 @@ func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// =========================================================================
 
 	if !app.DeletionTimestamp.IsZero() {
-		return r.handleDeletion(ctx, &app)
+		result, err := r.handleDeletion(ctx, &app)
+		if err != nil {
+			incrementReconcileErrors(req.Name, req.Namespace, "deletion_failed")
+		} else {
+			deleteApplicationMetrics(req.Name, req.Namespace, string(app.Spec.Tier), app.Spec.Team)
+			// Recompute namespace aggregates so the removed Application and its
+			// child resources drop out of the managed-resource and tier totals.
+			r.updateManagedResourceMetrics(ctx, req.Namespace)
+			r.updateApplicationTotalMetrics(ctx, req.Namespace)
+		}
+		recordReconcileDuration(req.Name, req.Namespace, "deletion", time.Since(reconcileStart).Seconds())
+		return result, err
 	}
 
 	// =========================================================================
@@ -484,14 +507,30 @@ func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 	}
 
+	// =========================================================================
+	// M9: DRIFT DETECTION SETUP
+	// =========================================================================
+	//
+	// specUnchanged is the discriminator between "expected change" and "drift".
+	// ObservedGeneration is only written at the END of a successful reconcile,
+	// so reading it here reflects the LAST generation we fully reconciled. If it
+	// equals the current Generation, the desired state is unchanged — any child
+	// that still needs Create/Update was altered externally (drift). The tracker
+	// accumulates each child's apply outcome for evaluation after all children.
+	// =========================================================================
+	specUnchanged := app.Generation == app.Status.ObservedGeneration
+	dt := &driftTracker{}
+
 	// Reconcile Deployment (if workload specified)
 	var deploymentReady bool
 	if app.Spec.Workload != nil {
 		var err error
-		deploymentReady, err = r.reconcileDeployment(ctx, &app)
+		deploymentReady, err = r.reconcileDeployment(ctx, &app, dt)
 		if err != nil {
 			logger.Error(err, "failed to reconcile deployment")
 			r.setFailedCondition(ctx, &app, "DeploymentFailed", err.Error())
+			incrementReconcileErrors(req.Name, req.Namespace, "deployment")
+			recordReconcileDuration(req.Name, req.Namespace, "error", time.Since(reconcileStart).Seconds())
 			return ctrl.Result{RequeueAfter: requeueAfterError}, nil
 		}
 	} else {
@@ -503,10 +542,12 @@ func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	var serviceReady bool
 	if app.Spec.Workload != nil && len(app.Spec.Workload.Ports) > 0 {
 		var err error
-		serviceReady, err = r.reconcileService(ctx, &app)
+		serviceReady, err = r.reconcileService(ctx, &app, dt)
 		if err != nil {
 			logger.Error(err, "failed to reconcile service")
 			r.setFailedCondition(ctx, &app, "ServiceFailed", err.Error())
+			incrementReconcileErrors(req.Name, req.Namespace, "service")
+			recordReconcileDuration(req.Name, req.Namespace, "error", time.Since(reconcileStart).Seconds())
 			return ctrl.Result{RequeueAfter: requeueAfterError}, nil
 		}
 	} else {
@@ -515,31 +556,39 @@ func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	// Reconcile ConfigMap
-	if _, err := r.reconcileConfigMap(ctx, &app); err != nil {
+	if _, err := r.reconcileConfigMap(ctx, &app, dt); err != nil {
 		logger.Error(err, "failed to reconcile configmap")
 		r.setFailedCondition(ctx, &app, "ConfigMapFailed", err.Error())
 		return ctrl.Result{RequeueAfter: requeueAfterError}, nil
 	}
 
 	// Reconcile Secret
-	if _, err := r.reconcileSecret(ctx, &app); err != nil {
+	if _, err := r.reconcileSecret(ctx, &app, dt); err != nil {
 		logger.Error(err, "failed to reconcile secret")
 		r.setFailedCondition(ctx, &app, "SecretFailed", err.Error())
 		return ctrl.Result{RequeueAfter: requeueAfterError}, nil
 	}
 
 	// Reconcile HPA
-	if _, err := r.reconcileHPA(ctx, &app); err != nil {
+	if _, err := r.reconcileHPA(ctx, &app, dt); err != nil {
 		logger.Error(err, "failed to reconcile HPA")
 		r.setFailedCondition(ctx, &app, "HPAFailed", err.Error())
 		return ctrl.Result{RequeueAfter: requeueAfterError}, nil
 	}
 
 	// Reconcile PDB
-	if _, err := r.reconcilePDB(ctx, &app); err != nil {
+	if _, err := r.reconcilePDB(ctx, &app, dt); err != nil {
 		logger.Error(err, "failed to reconcile PDB")
 		r.setFailedCondition(ctx, &app, "PDBFailed", err.Error())
 		return ctrl.Result{RequeueAfter: requeueAfterError}, nil
+	}
+
+	// Reconcile monitoring resources (ServiceMonitor + PrometheusRule)
+	if err := r.reconcileMonitoring(ctx, &app); err != nil {
+		logger.Error(err, "failed to reconcile monitoring resources")
+		// Monitoring failures are non-fatal — don't block the main reconciliation
+		r.Recorder.Event(&app, corev1.EventTypeWarning, "MonitoringFailed",
+			fmt.Sprintf("Failed to reconcile monitoring resources: %v", err))
 	}
 
 	// =========================================================================
@@ -561,6 +610,7 @@ func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	requeueAfter := requeueAfterSuccess
 	var infraState *provider.ResourceState
+	var infraDrift []provider.DriftItem
 	infraRequested := app.Spec.Database != nil || app.Spec.Cache != nil || app.Spec.Queue != nil || app.Spec.Storage != nil
 	if infraRequested {
 		prov, err := r.getProvider()
@@ -588,7 +638,47 @@ func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 				return ctrl.Result{}, err
 			}
 		}
+
+		// M9: infrastructure drift detection (read-only). The operators own these
+		// CRDs, so we report drift rather than overwrite aggressively; Provision()
+		// re-applies desired state on its own cadence. Best-effort — detection
+		// failure must never fail the reconcile.
+		if dd, ok := prov.(provider.DriftDetector); ok {
+			if items, derr := dd.DetectDrift(ctx, &app); derr != nil {
+				logger.V(1).Info("infrastructure drift detection failed", "error", derr.Error())
+			} else {
+				infraDrift = items
+			}
+		}
 	}
+
+	// =========================================================================
+	// M9: EVALUATE & REPORT DRIFT
+	// =========================================================================
+	//
+	// K8s child drift was already CORRECTED above (CreateOrUpdate overwrote any
+	// external edit). Here we only decide whether what happened counts as drift —
+	// a child needed Create/Update while the spec was unchanged — and surface it.
+	// Infra drift is detect-only. Events are emitted ONCE here, never inside the
+	// status retry loop below (which may run several times on conflict).
+	// =========================================================================
+	var driftMessages []string
+	if correctedChildren := dt.corrected(); specUnchanged && len(correctedChildren) > 0 {
+		msg := driftCorrectionMessage(correctedChildren)
+		driftMessages = append(driftMessages, "corrected child resources: "+msg)
+		logger.Info("drift corrected", "resources", msg)
+		r.Recorder.Event(&app, corev1.EventTypeNormal, "DriftCorrected",
+			fmt.Sprintf("Restored child resources to desired state (%s)", msg))
+	}
+	if len(infraDrift) > 0 {
+		msg := infraDriftMessage(infraDrift)
+		driftMessages = append(driftMessages, "infrastructure drift: "+msg)
+		logger.Info("infrastructure drift detected", "items", msg)
+		r.Recorder.Event(&app, corev1.EventTypeWarning, "InfrastructureDriftDetected",
+			fmt.Sprintf("Infrastructure drifted from desired state (%s)", msg))
+	}
+	driftDetectedNow := len(driftMessages) > 0
+	driftMessage := strings.Join(driftMessages, "; ")
 
 	// =========================================================================
 	// STEP 5: UPDATE STATUS WITH RETRY
@@ -637,6 +727,26 @@ func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		r.updateWorkloadConditions(ctx, &app, deploymentReady)
 		r.updateOverallReadyCondition(ctx, &app, serviceReady, infraReady)
 
+		// M9: reflect drift. True on the pass where drift was found/corrected,
+		// False once observed state matches desired again.
+		if driftDetectedNow {
+			meta.SetStatusCondition(&app.Status.Conditions, metav1.Condition{
+				Type:               platformv1alpha1.ConditionTypeDriftDetected,
+				Status:             metav1.ConditionTrue,
+				Reason:             "DriftDetected",
+				Message:            driftMessage,
+				ObservedGeneration: app.Generation,
+			})
+		} else {
+			meta.SetStatusCondition(&app.Status.Conditions, metav1.Condition{
+				Type:               platformv1alpha1.ConditionTypeDriftDetected,
+				Status:             metav1.ConditionFalse,
+				Reason:             "InSync",
+				Message:            "All managed resources match desired state",
+				ObservedGeneration: app.Generation,
+			})
+		}
+
 		// Set overall phase
 		if deploymentReady && serviceReady && infraReady {
 			app.Status.Phase = platformv1alpha1.ApplicationReady
@@ -658,6 +768,8 @@ func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	if retryErr != nil {
 		logger.Error(retryErr, "failed to update status after retries")
+		incrementReconcileErrors(req.Name, req.Namespace, "status_update")
+		recordReconcileDuration(req.Name, req.Namespace, "error", time.Since(reconcileStart).Seconds())
 		return ctrl.Result{}, retryErr
 	}
 
@@ -685,7 +797,90 @@ func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		"serviceReady", serviceReady,
 	)
 
+	// Record metrics
+	reconcileDurationSec := time.Since(reconcileStart).Seconds()
+	recordReconcileDuration(req.Name, req.Namespace, "success", reconcileDurationSec)
+	setApplicationPhase(req.Name, req.Namespace, string(app.Status.Phase), string(app.Spec.Tier), app.Spec.Team)
+
+	// Recompute namespace-aggregate gauges (managed-resource counts + Application
+	// totals by tier). Unlike the per-app gauges above, these are keyed only by
+	// namespace, so they cannot be "set" from a single Application's view without
+	// clobbering peers. We recompute them from a List on every reconcile — this is
+	// self-healing: counts naturally fall when resources are deleted out-of-band.
+	r.updateManagedResourceMetrics(ctx, req.Namespace)
+	r.updateApplicationTotalMetrics(ctx, req.Namespace)
+
 	return ctrl.Result{RequeueAfter: requeueAfter}, nil
+}
+
+// =============================================================================
+// AGGREGATE METRIC COLLECTORS
+// =============================================================================
+//
+// These populate the namespace-level gauges defined in metrics.go
+// (managedResourcesGauge, applicationTotal). They are deliberately List-based
+// rather than incremental:
+//
+//   incremental (Inc/Dec)        recompute-from-List (what we do)
+//   ─────────────────────        ────────────────────────────────
+//   drifts on missed events      always reflects actual cluster state
+//   needs delete bookkeeping     self-corrects when objects vanish
+//   cheap                        one List per type per reconcile
+//
+// For a controller managing a modest number of Applications, the List cost is
+// negligible and correctness wins. This mirrors how kube-state-metrics derives
+// its gauges from List/Watch caches rather than trusting event deltas.
+
+// updateManagedResourceMetrics counts the controller-owned Deployments and
+// Services in a namespace and publishes them to managedResourcesGauge. Selection
+// is by the shared managed-by label that every child resource carries.
+//
+// Each kind is set explicitly every pass (a len-0 List still sets 0), so an
+// emptied namespace does not leave a stale, "stuck" gauge value behind.
+func (r *ApplicationReconciler) updateManagedResourceMetrics(ctx context.Context, namespace string) {
+	logger := log.FromContext(ctx)
+	selector := client.MatchingLabels{"app.kubernetes.io/managed-by": "goplatform"}
+
+	var deployments appsv1.DeploymentList
+	if err := r.List(ctx, &deployments, client.InNamespace(namespace), selector); err != nil {
+		// Metrics are best-effort — never fail reconciliation over them.
+		logger.V(1).Info("failed to list Deployments for managed-resource metric", "error", err.Error())
+	} else {
+		setManagedResources(namespace, "Deployment", float64(len(deployments.Items)))
+	}
+
+	var services corev1.ServiceList
+	if err := r.List(ctx, &services, client.InNamespace(namespace), selector); err != nil {
+		logger.V(1).Info("failed to list Services for managed-resource metric", "error", err.Error())
+	} else {
+		setManagedResources(namespace, "Service", float64(len(services.Items)))
+	}
+}
+
+// updateApplicationTotalMetrics counts Applications by tier in a namespace and
+// publishes them to applicationTotal. Every known tier is set explicitly so a
+// tier dropping to zero resets its gauge instead of retaining a stale value.
+func (r *ApplicationReconciler) updateApplicationTotalMetrics(ctx context.Context, namespace string) {
+	logger := log.FromContext(ctx)
+
+	var apps platformv1alpha1.ApplicationList
+	if err := r.List(ctx, &apps, client.InNamespace(namespace)); err != nil {
+		logger.V(1).Info("failed to list Applications for total metric", "error", err.Error())
+		return
+	}
+
+	// Seed all known tiers at zero so emptied tiers are reset, not left stale.
+	counts := map[platformv1alpha1.ServiceTier]int{
+		platformv1alpha1.TierCritical:    0,
+		platformv1alpha1.TierStandard:    0,
+		platformv1alpha1.TierDevelopment: 0,
+	}
+	for i := range apps.Items {
+		counts[apps.Items[i].Spec.Tier]++
+	}
+	for tier, count := range counts {
+		setApplicationTotal(namespace, string(tier), float64(count))
+	}
 }
 
 // =============================================================================
@@ -877,7 +1072,7 @@ func (r *ApplicationReconciler) handleDeletion(ctx context.Context, app *platfor
 //
 // =============================================================================
 
-func (r *ApplicationReconciler) reconcileDeployment(ctx context.Context, app *platformv1alpha1.Application) (bool, error) {
+func (r *ApplicationReconciler) reconcileDeployment(ctx context.Context, app *platformv1alpha1.Application, dt *driftTracker) (bool, error) {
 	logger := log.FromContext(ctx)
 
 	// =========================================================================
@@ -915,9 +1110,22 @@ func (r *ApplicationReconciler) reconcileDeployment(ctx context.Context, app *pl
 		},
 	}
 
+	// Capture the live managed fields BEFORE the mutate overwrites them, so we can
+	// report field-level drift (e.g. "replicas 5->3") when an external actor
+	// scaled or re-imaged the Deployment out from under us. We compare these
+	// specific fields rather than trusting CreateOrUpdate's result, which reports
+	// "Updated" even on harmless server-side defaulting.
+	var oldReplicas *int32
+	var oldImage string
+
 	opResult, err := controllerutil.CreateOrUpdate(ctx, r.Client, deployment, func() error {
 		// This function mutates 'deployment' to match desired state
 		// It's called after Get (if exists) or with empty object (if new)
+
+		oldReplicas = deployment.Spec.Replicas
+		if len(deployment.Spec.Template.Spec.Containers) > 0 {
+			oldImage = deployment.Spec.Template.Spec.Containers[0].Image
+		}
 
 		// Copy spec from desired
 		deployment.Spec = desired.Spec
@@ -944,6 +1152,34 @@ func (r *ApplicationReconciler) reconcileDeployment(ctx context.Context, app *pl
 	case controllerutil.OperationResultNone:
 		// No changes needed
 	}
+
+	// Drift = the resource was recreated (was missing) OR a meaningful managed
+	// field actually changed. Replicas is the field-level "showcase"; we also
+	// catch image changes. Anything else (server defaulting) is NOT drift.
+	drifted := false
+	detail := ""
+	switch opResult {
+	case controllerutil.OperationResultCreated:
+		drifted, detail = true, "recreated"
+	case controllerutil.OperationResultUpdated:
+		if oldReplicas != nil {
+			desiredReplicas := int32(1)
+			if desired.Spec.Replicas != nil {
+				desiredReplicas = *desired.Spec.Replicas
+			}
+			if *oldReplicas != desiredReplicas {
+				drifted = true
+				detail = fmt.Sprintf("replicas %d->%d", *oldReplicas, desiredReplicas)
+			}
+		}
+		if oldImage != "" && oldImage != app.Spec.Workload.Image {
+			drifted = true
+			if detail == "" {
+				detail = "image changed"
+			}
+		}
+	}
+	dt.record("Deployment", drifted, detail)
 
 	// Check if deployment is ready
 	return r.isDeploymentReady(deployment), nil
@@ -1249,7 +1485,7 @@ func (r *ApplicationReconciler) isDeploymentReady(deployment *appsv1.Deployment)
 //
 // =============================================================================
 
-func (r *ApplicationReconciler) reconcileService(ctx context.Context, app *platformv1alpha1.Application) (bool, error) {
+func (r *ApplicationReconciler) reconcileService(ctx context.Context, app *platformv1alpha1.Application, dt *driftTracker) (bool, error) {
 	logger := log.FromContext(ctx)
 
 	desired := r.buildService(app)
@@ -1266,7 +1502,13 @@ func (r *ApplicationReconciler) reconcileService(ctx context.Context, app *platf
 		},
 	}
 
+	// Capture the live port numbers before overwrite so we can detect a real
+	// port edit (vs. server defaulting noise from CreateOrUpdate).
+	var oldPorts []int32
+
 	opResult, err := controllerutil.CreateOrUpdate(ctx, r.Client, service, func() error {
+		oldPorts = servicePortNumbers(service.Spec.Ports)
+
 		// Preserve ClusterIP on update (immutable field)
 		clusterIP := service.Spec.ClusterIP
 
@@ -1295,6 +1537,18 @@ func (r *ApplicationReconciler) reconcileService(ctx context.Context, app *platf
 		r.Recorder.Event(app, corev1.EventTypeNormal, "ServiceUpdated",
 			fmt.Sprintf("Updated Service %s", service.Name))
 	}
+
+	drifted := false
+	detail := ""
+	switch opResult {
+	case controllerutil.OperationResultCreated:
+		drifted, detail = true, "recreated"
+	case controllerutil.OperationResultUpdated:
+		if !equalInt32Slices(oldPorts, servicePortNumbers(desired.Spec.Ports)) {
+			drifted, detail = true, "ports changed"
+		}
+	}
+	dt.record("Service", drifted, detail)
 
 	return true, nil // Services are "ready" immediately
 }
@@ -1339,7 +1593,7 @@ func (r *ApplicationReconciler) buildService(app *platformv1alpha1.Application) 
 //
 // =============================================================================
 
-func (r *ApplicationReconciler) reconcileConfigMap(ctx context.Context, app *platformv1alpha1.Application) (bool, error) {
+func (r *ApplicationReconciler) reconcileConfigMap(ctx context.Context, app *platformv1alpha1.Application, dt *driftTracker) (bool, error) {
 	logger := log.FromContext(ctx)
 
 	desired := r.buildConfigMap(app)
@@ -1373,6 +1627,9 @@ func (r *ApplicationReconciler) reconcileConfigMap(ctx context.Context, app *pla
 	case controllerutil.OperationResultUpdated:
 		logger.Info("updated configmap", "configmap", cm.Name)
 	}
+
+	cmDrifted, cmDetail := recoveredOrChanged(opResult)
+	dt.record("ConfigMap", cmDrifted, cmDetail)
 
 	return true, nil
 }
@@ -1409,7 +1666,7 @@ func (r *ApplicationReconciler) buildConfigMap(app *platformv1alpha1.Application
 //
 // =============================================================================
 
-func (r *ApplicationReconciler) reconcileSecret(ctx context.Context, app *platformv1alpha1.Application) (bool, error) {
+func (r *ApplicationReconciler) reconcileSecret(ctx context.Context, app *platformv1alpha1.Application, dt *driftTracker) (bool, error) {
 	logger := log.FromContext(ctx)
 
 	desired := r.buildSecret(app)
@@ -1446,6 +1703,9 @@ func (r *ApplicationReconciler) reconcileSecret(ctx context.Context, app *platfo
 			fmt.Sprintf("Created Secret %s", secret.Name))
 	}
 
+	secretDrifted, secretDetail := recoveredOrChanged(opResult)
+	dt.record("Secret", secretDrifted, secretDetail)
+
 	return true, nil
 }
 
@@ -1474,7 +1734,7 @@ func (r *ApplicationReconciler) buildSecret(app *platformv1alpha1.Application) *
 //
 // =============================================================================
 
-func (r *ApplicationReconciler) reconcileHPA(ctx context.Context, app *platformv1alpha1.Application) (bool, error) {
+func (r *ApplicationReconciler) reconcileHPA(ctx context.Context, app *platformv1alpha1.Application, dt *driftTracker) (bool, error) {
 	logger := log.FromContext(ctx)
 
 	// =========================================================================
@@ -1540,6 +1800,9 @@ func (r *ApplicationReconciler) reconcileHPA(ctx context.Context, app *platformv
 		logger.Info("updated HPA", "hpa", hpa.Name)
 	}
 
+	hpaDrifted, hpaDetail := recoveredOrChanged(opResult)
+	dt.record("HorizontalPodAutoscaler", hpaDrifted, hpaDetail)
+
 	return true, nil
 }
 
@@ -1552,7 +1815,8 @@ func (r *ApplicationReconciler) buildHPA(app *platformv1alpha1.Application) *aut
 
 	var metrics []autoscalingv2.MetricSpec
 	for _, m := range app.Spec.Scaling.Metrics {
-		if m.Type == "cpu" {
+		switch m.Type {
+		case "cpu":
 			metrics = append(metrics, autoscalingv2.MetricSpec{
 				Type: autoscalingv2.ResourceMetricSourceType,
 				Resource: &autoscalingv2.ResourceMetricSource{
@@ -1563,7 +1827,7 @@ func (r *ApplicationReconciler) buildHPA(app *platformv1alpha1.Application) *aut
 					},
 				},
 			})
-		} else if m.Type == "memory" {
+		case "memory":
 			metrics = append(metrics, autoscalingv2.MetricSpec{
 				Type: autoscalingv2.ResourceMetricSourceType,
 				Resource: &autoscalingv2.ResourceMetricSource{
@@ -1610,7 +1874,7 @@ func (r *ApplicationReconciler) buildHPA(app *platformv1alpha1.Application) *aut
 //
 // =============================================================================
 
-func (r *ApplicationReconciler) reconcilePDB(ctx context.Context, app *platformv1alpha1.Application) (bool, error) {
+func (r *ApplicationReconciler) reconcilePDB(ctx context.Context, app *platformv1alpha1.Application, dt *driftTracker) (bool, error) {
 	logger := log.FromContext(ctx)
 
 	// =========================================================================
@@ -1674,6 +1938,9 @@ func (r *ApplicationReconciler) reconcilePDB(ctx context.Context, app *platformv
 	case controllerutil.OperationResultUpdated:
 		logger.Info("updated PDB", "pdb", pdb.Name)
 	}
+
+	pdbDrifted, pdbDetail := recoveredOrChanged(opResult)
+	dt.record("PodDisruptionBudget", pdbDrifted, pdbDetail)
 
 	return true, nil
 }
@@ -2226,7 +2493,7 @@ func (r *ApplicationReconciler) ensureInfrastructureStatus(app *platformv1alpha1
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ApplicationReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
+	b := ctrl.NewControllerManagedBy(mgr).
 		// Primary watch: our CRD with generation predicate
 		// Only reconcile when spec changes, not on status updates
 		For(&platformv1alpha1.Application{},
@@ -2238,7 +2505,16 @@ func (r *ApplicationReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&corev1.ConfigMap{}).
 		Owns(&corev1.Secret{}).
 		Owns(&autoscalingv2.HorizontalPodAutoscaler{}).
-		Owns(&policyv1.PodDisruptionBudget{}).
+		Owns(&policyv1.PodDisruptionBudget{})
+
+	// Conditionally watch monitoring resources if Prometheus operator CRDs are installed.
+	// Calling .Owns() for a type whose CRD doesn't exist panics at startup.
+	if r.DiscoveryClient != nil && r.isMonitoringCRDAvailable() {
+		b = b.Owns(&monitoringv1.ServiceMonitor{}).
+			Owns(&monitoringv1.PrometheusRule{})
+	}
+
+	return b.
 		// Controller name (for metrics, logging)
 		Named("application").
 		Complete(r)

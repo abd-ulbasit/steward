@@ -11,13 +11,14 @@ GoPlatform is an Internal Developer Platform (IDP) implemented as a Kubernetes o
 - IaC: Terraform (planned integration)
 
 ## Project Structure (high level)
-- cmd/                 Entry points (manager, CLI)
+- cmd/                 Entry point (manager: cmd/main.go)
 - api/                 CRD types and schema markers
-- internal/controller/ Reconciliation logic
+- internal/controller/ Reconciliation logic, metrics, monitoring
+- internal/provider/   InfrastructureProvider interface + impls
+- internal/webhook/    Admission webhook validation
 - config/              CRD/RBAC/manifests (generated)
-- deploy/              Helm + raw manifests + Terraform modules
-- docs/                Architecture docs
-- memory-bank/         Project memory files
+- examples/            Sample Application manifests
+- docs/                Architecture & observability docs
 
 ## Entry Points
 - Operator binary: cmd/main.go

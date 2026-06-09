@@ -35,12 +35,17 @@ make run
 
 ```
 goplatform/
-├── cmd/                 # Entry points
-├── internal/            # Private packages
-├── pkg/apis/            # CRD types (public)
-├── deploy/              # Deployment manifests
-├── docs/                # Documentation
-└── memory-bank/         # AI memory (for development)
+├── api/v1alpha1/        # CRD types & schema markers
+├── cmd/                 # Entry point (manager: cmd/main.go)
+├── internal/
+│   ├── controller/      # Reconciliation logic, metrics, monitoring
+│   ├── provider/        # InfrastructureProvider interface + impls
+│   └── webhook/         # Admission webhook validation
+├── config/              # Generated CRD/RBAC/manifests (do not hand-edit)
+├── examples/            # Sample Application manifests
+├── hack/                # Dev scripts
+├── test/                # E2E + test utils
+└── docs/                # Documentation
 ```
 
 ## Making Changes

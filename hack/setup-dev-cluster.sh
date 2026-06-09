@@ -15,6 +15,8 @@ set -euo pipefail
 
 CLUSTER_NAME="goplatform-dev"
 CNPG_VERSION="1.25.0"
+CERT_MANAGER_VERSION="v1.17.2"
+PROM_OPERATOR_CRD_VERSION="v0.89.0"
 IMG="goplatform:dev"
 SKIP_BUILD=false
 SKIP_OPERATORS=false
@@ -67,7 +69,40 @@ kubectl cluster-info --context "kind-${CLUSTER_NAME}" >/dev/null 2>&1 || \
   error "Cannot connect to cluster. Check 'kind-${CLUSTER_NAME}' context."
 info "Cluster is ready."
 
-# ── Step 2: Install CNPG operator ────────────────────────────────────────────
+# ── Step 2: Install cert-manager ─────────────────────────────────────────────
+if [ "$SKIP_OPERATORS" = false ]; then
+  if kubectl get namespace cert-manager --context "kind-${CLUSTER_NAME}" >/dev/null 2>&1; then
+    info "cert-manager already installed, skipping."
+  else
+    info "Installing cert-manager ${CERT_MANAGER_VERSION}..."
+    kubectl apply --context "kind-${CLUSTER_NAME}" \
+      -f "https://github.com/cert-manager/cert-manager/releases/download/${CERT_MANAGER_VERSION}/cert-manager.yaml"
+
+    info "Waiting for cert-manager webhook to be ready..."
+    kubectl wait --for=condition=Available deployment/cert-manager-webhook \
+      -n cert-manager --context "kind-${CLUSTER_NAME}" --timeout=120s
+    info "cert-manager is ready."
+  fi
+else
+  info "Skipping cert-manager installation (--skip-operators)."
+fi
+
+# ── Step 3: Install Prometheus Operator CRDs ─────────────────────────────────
+if [ "$SKIP_OPERATORS" = false ]; then
+  if kubectl get crd servicemonitors.monitoring.coreos.com --context "kind-${CLUSTER_NAME}" >/dev/null 2>&1; then
+    info "Prometheus Operator CRDs already installed, skipping."
+  else
+    info "Installing Prometheus Operator CRDs ${PROM_OPERATOR_CRD_VERSION}..."
+    kubectl apply --server-side --context "kind-${CLUSTER_NAME}" \
+      -f "https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/${PROM_OPERATOR_CRD_VERSION}/example/prometheus-operator-crd/monitoring.coreos.com_servicemonitors.yaml" \
+      -f "https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/${PROM_OPERATOR_CRD_VERSION}/example/prometheus-operator-crd/monitoring.coreos.com_prometheusrules.yaml"
+    info "Prometheus Operator CRDs installed."
+  fi
+else
+  info "Skipping Prometheus CRDs installation (--skip-operators)."
+fi
+
+# ── Step 4: Install CNPG operator ────────────────────────────────────────────
 if [ "$SKIP_OPERATORS" = false ]; then
   if kubectl get crd clusters.postgresql.cnpg.io --context "kind-${CLUSTER_NAME}" >/dev/null 2>&1; then
     info "CNPG operator already installed, skipping."
@@ -85,12 +120,12 @@ else
   info "Skipping operator installation (--skip-operators)."
 fi
 
-# ── Step 3: Install GoPlatform CRDs ─────────────────────────────────────────
+# ── Step 5: Install GoPlatform CRDs ─────────────────────────────────────────
 info "Installing GoPlatform CRDs..."
 make install
 info "CRDs installed."
 
-# ── Step 4: Build and load controller image ──────────────────────────────────
+# ── Step 6: Build and load controller image ──────────────────────────────────
 if [ "$SKIP_BUILD" = false ]; then
   info "Building controller image: $IMG"
   make docker-build IMG="$IMG"
@@ -102,7 +137,7 @@ else
   info "Skipping build (--skip-build)."
 fi
 
-# ── Step 5: Deploy controller ────────────────────────────────────────────────
+# ── Step 7: Deploy controller ────────────────────────────────────────────────
 info "Deploying GoPlatform controller..."
 make deploy IMG="$IMG"
 

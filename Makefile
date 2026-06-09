@@ -146,6 +146,89 @@ build-installer: manifests generate kustomize ## Generate a consolidated YAML wi
 	cd config/manager && "$(KUSTOMIZE)" edit set image controller=${IMG}
 	"$(KUSTOMIZE)" build config/default > dist/install.yaml
 
+##@ Dev Cluster
+
+# Versions for cluster dependencies
+CERT_MANAGER_VERSION ?= v1.17.2
+CNPG_VERSION ?= 1.25.0
+PROM_OPERATOR_CRD_VERSION ?= v0.89.0
+DEV_CLUSTER ?= goplatform-dev
+DEV_IMG ?= goplatform:dev
+
+.PHONY: dev-setup
+dev-setup: dev-cluster install-cert-manager install-prometheus-crds install-cnpg install ## Create Kind cluster and install all dependencies.
+	@echo ""
+	@echo "Dev cluster ready! Run 'make dev-deploy' to build and deploy the operator."
+
+.PHONY: dev-deploy
+dev-deploy: ## Build, load into Kind, and deploy the operator.
+	$(MAKE) docker-build IMG=$(DEV_IMG)
+	$(MAKE) dev-load
+	$(MAKE) deploy IMG=$(DEV_IMG)
+	@echo ""
+	@echo "Operator deployed. Waiting for rollout..."
+	"$(KUBECTL)" wait --for=condition=Available deployment/goplatform-controller-manager \
+		-n goplatform-system --timeout=120s
+	@echo "Operator is ready."
+
+.PHONY: dev-load
+dev-load: ## Load the operator image into the Kind cluster.
+	$(KIND) load docker-image $(DEV_IMG) --name $(DEV_CLUSTER)
+
+.PHONY: dev-teardown
+dev-teardown: ## Delete the dev Kind cluster.
+	$(KIND) delete cluster --name $(DEV_CLUSTER)
+
+.PHONY: dev-cluster
+dev-cluster: ## Create a Kind cluster if it doesn't already exist.
+	@case "$$($(KIND) get clusters 2>/dev/null)" in \
+		*"$(DEV_CLUSTER)"*) \
+			echo "Kind cluster '$(DEV_CLUSTER)' already exists." ;; \
+		*) \
+			echo "Creating Kind cluster '$(DEV_CLUSTER)'..."; \
+			$(KIND) create cluster --name $(DEV_CLUSTER) --wait 60s ;; \
+	esac
+	@"$(KUBECTL)" config use-context kind-$(DEV_CLUSTER)
+
+.PHONY: install-cert-manager
+install-cert-manager: ## Install cert-manager into the cluster.
+	@if "$(KUBECTL)" get namespace cert-manager >/dev/null 2>&1; then \
+		echo "cert-manager already installed, skipping."; \
+	else \
+		echo "Installing cert-manager $(CERT_MANAGER_VERSION)..."; \
+		"$(KUBECTL)" apply -f https://github.com/cert-manager/cert-manager/releases/download/$(CERT_MANAGER_VERSION)/cert-manager.yaml; \
+		echo "Waiting for cert-manager webhook..."; \
+		"$(KUBECTL)" wait --for=condition=Available deployment/cert-manager-webhook \
+			-n cert-manager --timeout=120s; \
+		echo "cert-manager is ready."; \
+	fi
+
+.PHONY: install-prometheus-crds
+install-prometheus-crds: ## Install Prometheus Operator CRDs (ServiceMonitor, PrometheusRule).
+	@if "$(KUBECTL)" get crd servicemonitors.monitoring.coreos.com >/dev/null 2>&1; then \
+		echo "Prometheus CRDs already installed, skipping."; \
+	else \
+		echo "Installing Prometheus Operator CRDs $(PROM_OPERATOR_CRD_VERSION)..."; \
+		"$(KUBECTL)" apply --server-side \
+			-f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/$(PROM_OPERATOR_CRD_VERSION)/example/prometheus-operator-crd/monitoring.coreos.com_servicemonitors.yaml \
+			-f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/$(PROM_OPERATOR_CRD_VERSION)/example/prometheus-operator-crd/monitoring.coreos.com_prometheusrules.yaml; \
+		echo "Prometheus CRDs installed."; \
+	fi
+
+.PHONY: install-cnpg
+install-cnpg: ## Install CloudNativePG operator.
+	@if "$(KUBECTL)" get crd clusters.postgresql.cnpg.io >/dev/null 2>&1; then \
+		echo "CNPG operator already installed, skipping."; \
+	else \
+		echo "Installing CNPG operator v$(CNPG_VERSION)..."; \
+		"$(KUBECTL)" apply --server-side \
+			-f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-$$(echo $(CNPG_VERSION) | cut -d. -f1,2)/releases/cnpg-$(CNPG_VERSION).yaml; \
+		echo "Waiting for CNPG operator..."; \
+		"$(KUBECTL)" wait --for=condition=Available deployment/cnpg-controller-manager \
+			-n cnpg-system --timeout=120s; \
+		echo "CNPG operator is ready."; \
+	fi
+
 ##@ Deployment
 
 ifndef ignore-not-found

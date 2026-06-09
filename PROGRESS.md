@@ -3,8 +3,8 @@
 ## Status: Phase 2 - Real-World Operator
 
 **Target Milestones**: 12
-**Completed**: 7
-**Current**: Ready for Milestone 8
+**Completed**: 9
+**Current**: Phase 2 complete — Milestone 10 next (Phase 3, deferred)
 
 ---
 
@@ -13,7 +13,7 @@
 | Phase | Description | Milestones | Status |
 |-------|-------------|------------|--------|
 | Phase 1 | Solid Foundation | M1-M5 | ✅ Complete |
-| Phase 2 | Real-World Operator | M6-M9 | 🔄 In Progress |
+| Phase 2 | Real-World Operator | M6-M9 | ✅ Complete |
 | Phase 3 | Advanced Patterns | M10-M12 | 📋 Planned |
 
 ---
@@ -406,7 +406,7 @@ Webhooks are how Kubernetes enforces rules at the API level — before objects a
 
 ---
 
-### Milestone 8: Observability Integration - NOT STARTED
+### Milestone 8: Observability Integration - ✅ COMPLETED
 
 **Goal:** Auto-generate Prometheus ServiceMonitors, PrometheusRules, and expose custom controller metrics for every Application.
 
@@ -465,19 +465,21 @@ Observability is not a nice-to-have — it's how you know your operator is worki
    - Run `make manifests` to update role.yaml
 
 **Deliverables:**
-- [ ] Custom Prometheus metrics for controller performance (reconcile duration, error count, app phase gauge, managed resources)
-- [ ] ServiceMonitor generation from Application observability spec
-- [ ] PrometheusRule generation with tier-based alerting thresholds
-- [ ] Prometheus operator CRD detection (skip if not installed, set condition)
-- [ ] Owner references on all monitoring resources
-- [ ] Cleanup when `spec.observability` is removed
-- [ ] RBAC markers for monitoring.coreos.com resources
-- [ ] Unit tests for ServiceMonitor and PrometheusRule generation
-- [ ] Documentation: how the Prometheus operator ecosystem works
+- [x] Custom Prometheus metrics for controller performance (reconcile duration, error count, app phase gauge, managed resources, application total by tier)
+- [x] Aggregate gauges (managed resources, application total) recomputed from List each reconcile and wired into the reconcile + deletion paths
+- [x] ServiceMonitor generation from Application observability spec
+- [x] PrometheusRule generation with tier-based alerting thresholds
+- [x] Prometheus operator CRD detection (skip if not installed, set condition)
+- [x] Owner references on all monitoring resources
+- [x] Cleanup when `spec.observability` is removed
+- [x] RBAC markers for monitoring.coreos.com resources
+- [x] Unit tests for ServiceMonitor and PrometheusRule generation
+- [x] Envtest wiring test proving aggregate gauges reflect real cluster state
+- [x] Documentation: how the Prometheus operator ecosystem works (`docs/observability.md`)
 
 ---
 
-### Milestone 9: Drift Detection & Self-Healing - NOT STARTED
+### Milestone 9: Drift Detection & Self-Healing - ✅ COMPLETED
 
 **Goal:** Detect when child resources (Deployments, Services, operator CRDs) are modified or deleted externally, and automatically restore them to match the Application spec.
 
@@ -541,17 +543,17 @@ This is where you go from "basic operator" to "deeply understanding reconciliati
    - Test: delete a Deployment owned by an Application → verify it's recreated within seconds
 
 **Deliverables:**
-- [ ] `.Owns()` watches for all child resource types (Deployment, Service, ConfigMap, Secret, HPA, PDB)
-- [ ] Drift detection events when `CreateOrUpdate` corrects a modification
-- [ ] `DriftDetected` status condition (True when found, False after correction)
-- [ ] `DriftDetector` interface implementation on KubernetesProvider
-- [ ] Infrastructure drift reporting (comparing operator CRD state vs expected state)
-- [ ] Deleted resource recovery (owned resource deleted → recreated)
-- [ ] Periodic re-sync validates all resources match desired state
-- [ ] Unit tests: manually modify owned resource → verify reconcile corrects it
-- [ ] Unit tests: delete owned resource → verify reconcile recreates it
-- [ ] Envtest integration tests for drift scenarios
-- [ ] Documentation: how watch propagation and drift detection work
+- [x] `.Owns()` watches for all child resource types (Deployment, Service, ConfigMap, Secret, HPA, PDB)
+- [x] Drift detection events (`DriftCorrected`) when a meaningful managed field is corrected
+- [x] `DriftDetected` status condition (True when found, False after correction)
+- [x] Meaningful-field drift signal (replicas/image/ports + recovery) instead of noisy CreateOrUpdate result — avoids false positives from server defaulting
+- [x] `DriftDetector` interface implementation on KubernetesProvider (all three components)
+- [x] Infrastructure drift reporting (CNPG instances/storage, Redis replicas, RabbitMQ replicas vs expected)
+- [x] Deleted resource recovery (owned resource deleted → recreated)
+- [x] Periodic re-sync validates all resources match desired state (5m requeue)
+- [x] Envtest: manually modify Deployment → reconcile corrects it + flags drift; delete Service → recreated
+- [x] Provider unit tests: DetectDrift returns items for drifted CRDs
+- [x] Documentation: `docs/drift-detection.md` (watch propagation, spec vs state drift, defaulting-noise trap)
 
 ---
 

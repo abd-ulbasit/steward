@@ -72,12 +72,12 @@ spec:
                                        ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                        GoPlatform Controller                                │
-│  ┌─────────────────┐  ┌──────────────────┐  ┌───────────────────────────┐  │
-│  │ App Reconciler  │  │ Infra Provider   │  │ Admission Webhooks       │  │
-│  │ - K8s resources │  │ - CNPG           │  │ - Validating             │  │
-│  │ - Status mgmt   │  │ - Redis          │  │ - Mutating               │  │
-│  │ - Conditions    │  │ - RabbitMQ       │  │ - Conversion             │  │
-│  └─────────────────┘  └──────────────────┘  └───────────────────────────┘  │
+│  ┌─────────────────┐  ┌──────────────────┐  ┌────────────────────────────┐  │
+│  │ App Reconciler  │  │ Infra Provider   │  │ Admission Webhooks         │  │
+│  │ - K8s resources │  │ - CNPG           │  │ - Validating               │  │
+│  │ - Status mgmt   │  │ - Redis          │  │ - Mutating                 │  │
+│  │ - Conditions    │  │ - RabbitMQ       │  │ - Conversion               │  │
+│  └─────────────────┘  └──────────────────┘  └────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────────┘
           │                      │                         │
           ▼                      ▼                         ▼

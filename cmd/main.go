@@ -199,6 +199,9 @@ func main() {
 		Scheme: mgr.GetScheme(),
 		// EventRecorder for emitting Kubernetes Events on resource operations.
 		// Events provide operational visibility via kubectl describe.
+		// nolint:staticcheck // GetEventRecorderFor (old events API) is intentional;
+		// migrating to the new events.EventRecorder API would require rewriting every
+		// Recorder.Event call across the controller and is out of scope here.
 		Recorder: mgr.GetEventRecorderFor("application-controller"),
 		// ProviderFactory wires in InfrastructureProvider implementations.
 		ProviderFactory: providerFactory,

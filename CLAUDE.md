@@ -4,11 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-GoPlatform is a learning-focused Kubernetes operator built with kubebuilder v4. It provisions in-cluster infrastructure (databases, caches, queues) via a custom `Application` CRD using existing operators (CloudNativePG, Redis, RabbitMQ). Phase 2 of 3 (Real-World Operator) complete (M1-M9 done); Phase 3 (M10-M12) deferred as not needed for the portfolio.
+GoPlatform is a learning-focused Kubernetes operator built with kubebuilder v4. It provisions in-cluster infrastructure (databases, caches, queues) via a custom `Application` CRD using existing operators (CloudNativePG, Redis, RabbitMQ). Phase 2 of 3 (Real-World Operator) complete (M1-M9 done); Phase 3 (M10-M12) deferred (out of current scope).
 
 **Primary goal:** Build deep Kubernetes operator expertise through AI-driven (agentic) development. The AI implements all code — core domain logic included; the developer directs the work, makes design decisions, reviews output, and learns by reading and reasoning about the result rather than typing it.
-
-***REMOVED***
 
 ## Common Commands
 
@@ -143,7 +141,7 @@ Salvaged from the developer's prior working-style notes — durable preferences,
 
 ## Remaining Work
 
-**What's left to finish ***REMOVED***:**
+**What's left to finish:**
 - ~~Task 1: Complete PrometheusRule generation in monitoring.go~~ ✅ done (M8)
 - ~~Task 2: Add drift detection (new drift.go)~~ ✅ done (M9)
 - Task 3: Fix webhook cross-field validation
@@ -154,4 +152,4 @@ Salvaged from the developer's prior working-style notes — durable preferences,
 12 milestones across 3 phases. Track progress in `PROGRESS.md`. Phases:
 - Phase 1: Solid Foundation (M1-M5) ✅
 - Phase 2: Real-World Operator (M6-M9) ✅ complete
-- Phase 3: Advanced Patterns (M10-M12) — deferred, not needed for portfolio
+- Phase 3: Advanced Patterns (M10-M12) — deferred (out of current scope)

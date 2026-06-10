@@ -254,7 +254,6 @@ func (m *MockProvider) Provision(ctx context.Context, app *platformv1alpha1.Appl
 	if !exists {
 		// First call - start provisioning
 		m.provisioningStart[key] = now
-		startTime = now
 
 		// Create initial state
 		state := m.createInitialState(app, now)

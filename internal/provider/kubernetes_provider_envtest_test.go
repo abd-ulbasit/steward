@@ -30,7 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/rest"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
@@ -171,7 +171,7 @@ func buildTestCRD(group, version, kind, plural string) *apiextensionsv1.CustomRe
 					Schema: &apiextensionsv1.CustomResourceValidation{
 						OpenAPIV3Schema: &apiextensionsv1.JSONSchemaProps{
 							Type:                   "object",
-							XPreserveUnknownFields: pointer.Bool(true),
+							XPreserveUnknownFields: ptr.To(true),
 						},
 					},
 				},

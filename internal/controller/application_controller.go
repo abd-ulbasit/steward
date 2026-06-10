@@ -1194,7 +1194,7 @@ func (r *ApplicationReconciler) buildDeployment(app *platformv1alpha1.Applicatio
 	}
 
 	// Build container ports
-	var containerPorts []corev1.ContainerPort
+	containerPorts := make([]corev1.ContainerPort, 0, len(app.Spec.Workload.Ports))
 	for _, p := range app.Spec.Workload.Ports {
 		containerPorts = append(containerPorts, corev1.ContainerPort{
 			Name:          p.Name,
@@ -1557,7 +1557,7 @@ func (r *ApplicationReconciler) reconcileService(ctx context.Context, app *platf
 func (r *ApplicationReconciler) buildService(app *platformv1alpha1.Application) *corev1.Service {
 	labels := r.buildLabels(app)
 
-	var ports []corev1.ServicePort
+	ports := make([]corev1.ServicePort, 0, len(app.Spec.Workload.Ports))
 	for _, p := range app.Spec.Workload.Ports {
 		ports = append(ports, corev1.ServicePort{
 			Name:       p.Name,

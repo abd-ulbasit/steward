@@ -348,9 +348,10 @@ func (p *KubernetesProvider) Provision(ctx context.Context, app *platformv1alpha
 		state.Storage = storageState
 		if err != nil {
 			if IsNotReady(err) {
+				// Storage is the last component; recording the first not-ready
+				// error is enough — hasNotReady is never read after this.
 				if !hasNotReady {
 					notReadyErr = err
-					hasNotReady = true
 				}
 			} else {
 				return state, err
@@ -419,9 +420,9 @@ func (p *KubernetesProvider) GetStatus(ctx context.Context, app *platformv1alpha
 	if app.Spec.Storage != nil {
 		st, err := p.getStorageStatus(ctx, app)
 		state.Storage = st
+		// Storage is the last component; hasErr is never read after this.
 		if err != nil && !hasErr {
 			firstErr = err
-			hasErr = true
 		}
 	}
 
@@ -947,10 +948,9 @@ func (p *KubernetesProvider) reconcileQueue(ctx context.Context, app *platformv1
 	rabbit.SetName(queueName)
 	rabbit.SetNamespace(ns)
 
+	// Note: FIFO has no RabbitMQ equivalent here; a single replica is kept
+	// regardless of app.Spec.Queue.FIFO.
 	replicas := int64(1)
-	if app.Spec.Queue.FIFO {
-		// FIFO doesn't map to RabbitMQ; keep replicas = 1 and warn via message
-	}
 
 	labels := p.buildLabels(app)
 	_, err = controllerutil.CreateOrUpdate(ctx, p.client, rabbit, func() error {

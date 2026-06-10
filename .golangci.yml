@@ -22,6 +22,24 @@ linters:
     misspell:
       locale: US
 
+  # v2 schema: exclusions live under `linters` (v1 used a top-level `issues` block).
+  exclusions:
+    generated: lax
+    paths:
+      - '.*zz_generated.*\.go$'
+    rules:
+      # Tests intentionally ignore some errors (e.g. cleanup) for readability.
+      - path: _test\.go
+        linters:
+          - errcheck
+      # Tests deliberately assert on Result.Requeue (the immediate-requeue
+      # contract after finalizer add). The field is deprecated but fully
+      # functional; the assertions are intentional.
+      - path: _test\.go
+        linters:
+          - staticcheck
+        text: 'SA1019: result.Requeue'
+
 formatters:
   enable:
     - gofmt
@@ -30,14 +48,3 @@ formatters:
     goimports:
       local-prefixes:
         - github.com/abd-ulbasit/goplatform
-
-issues:
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - errcheck
-        - dupl
-
-    - path: zz_generated
-      linters:
-        - all

@@ -317,15 +317,12 @@ var _ = Describe("Manager", Ordered, func() {
 
 		// +kubebuilder:scaffold:e2e-webhooks-checks
 
-		// TODO: Customize the e2e test suite with scenarios specific to your project.
-		// Consider applying sample/CR(s) and check their status and/or verifying
-		// the reconciliation by using the metrics, i.e.:
-		// metricsOutput, err := getMetricsOutput()
-		// Expect(err).NotTo(HaveOccurred(), "Failed to retrieve logs from curl pod")
-		// Expect(metricsOutput).To(ContainSubstring(
-		//    fmt.Sprintf(`controller_runtime_reconcile_total{controller="%s",result="success"} 1`,
-		//    strings.ToLower(<Kind>),
-		// ))
+		// This suite covers the manager itself: it starts, serves metrics behind
+		// authn/authz, and gets its webhook CA bundles injected. The Application
+		// lifecycle (create -> CNPG Cluster appears -> phase Ready -> delete ->
+		// everything collected) is exercised by ./hack/validate-e2e.sh against a
+		// Kind cluster, because it needs the CNPG, Redis, and RabbitMQ operators
+		// installed and reports pass/fail per step.
 	})
 })
 

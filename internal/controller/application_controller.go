@@ -1505,7 +1505,8 @@ func (r *ApplicationReconciler) isDeploymentReady(deployment *appsv1.Deployment)
 //
 // SERVICE VS INGRESS:
 //   - Service: Internal cluster networking (ClusterIP)
-//   - Ingress: External HTTP/HTTPS traffic (later milestone)
+//   - Ingress: External HTTP/HTTPS traffic. Not implemented — the CRD has no
+//     ingress block, so there is nothing to reconcile here yet.
 //
 // =============================================================================
 

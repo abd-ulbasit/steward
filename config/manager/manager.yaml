@@ -30,10 +30,9 @@ spec:
         control-plane: controller-manager
         app.kubernetes.io/name: goplatform
     spec:
-      # TODO(user): Uncomment the following code to configure the nodeAffinity expression
-      # according to the platforms which are supported by your solution.
-      # It is considered best practice to support multiple architectures. You can
-      # build your manager image using the makefile target docker-buildx.
+      # Uncomment to pin the manager to specific architectures. The image is
+      # built multi-arch by the docker-buildx target, so this is only needed on
+      # a mixed-architecture cluster.
       # affinity:
       #   nodeAffinity:
       #     requiredDuringSchedulingIgnoredDuringExecution:
@@ -87,7 +86,7 @@ spec:
             port: 8081
           initialDelaySeconds: 5
           periodSeconds: 10
-        # TODO(user): Configure the resources accordingly based on the project requirements.
+        # Sized for a single manager replica watching a few hundred Applications.
         # More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
         resources:
           limits:

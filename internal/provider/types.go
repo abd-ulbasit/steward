@@ -414,7 +414,7 @@ type StorageState struct {
 //	  - ConfigMap (mounted as file)
 //	  - Command-line flags
 //
-//	Later (Phase 8), we can add a ProviderConfig CRD for:
+//	Promoting this to a ProviderConfig CRD would buy:
 //	  - Per-namespace provider overrides
 //	  - Multi-cloud deployments
 //	  - Dynamic provider configuration

@@ -571,7 +571,7 @@ var _ = Describe("Application Controller", func() {
 	})
 
 	// =========================================================================
-	// TEST: RESOURCE GENERATION (MILESTONE 3)
+	// TEST: RESOURCE GENERATION (ConfigMap, Secret, HPA, PDB)
 	// =========================================================================
 
 	Context("When generating specialized resources", func() {

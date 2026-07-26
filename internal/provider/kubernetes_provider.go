@@ -24,7 +24,9 @@ limitations under the License.
 //   - Development & staging (cost savings)
 //   - Air‑gapped or on‑prem clusters
 //   - Edge deployments (k3s, MicroK8s)
-//   - Learning environments (everything is visible in K8s)
+//   - Teams that want one control plane for everything: a single kubectl
+//     surface, one RBAC model, one backup story — instead of splitting state
+//     between the cluster and a cloud console
 //
 // HOW IT WORKS (HIGH‑LEVEL):
 //   1. Detect required operators by checking CRDs via discovery

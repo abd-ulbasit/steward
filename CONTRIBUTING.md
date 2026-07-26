@@ -5,31 +5,30 @@ Thank you for considering contributing to GoPlatform! This document outlines the
 ## Development Setup
 
 ### Prerequisites
-- Go 1.22+
-- kubectl
-- kind or minikube
-- Terraform 1.5+
+- Go (version pinned in `go.mod`)
 - Docker
+- `kubectl`
+- `kind`
+
+Everything else — controller-gen, kustomize, golangci-lint, envtest binaries — is
+downloaded into `bin/` by the Makefile on first use.
 
 ### Getting Started
 
 ```bash
-# Clone the repository
 git clone https://github.com/abd-ulbasit/goplatform.git
 cd goplatform
-
-# Install dependencies
 go mod download
 
-# Create a local cluster
-make kind-create
+# Kind cluster + cert-manager + Prometheus Operator CRDs + CNPG + the Application CRD
+make dev-setup
 
-# Install CRDs
-make install
-
-# Run the controller locally
+# Run the controller locally against that cluster
 make run
 ```
+
+`make dev-teardown` deletes the cluster. To install only the CRD into a cluster
+you already have, use `make install`.
 
 ## Project Structure
 

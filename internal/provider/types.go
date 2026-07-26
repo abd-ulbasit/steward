@@ -103,7 +103,7 @@ const (
 	//   - Development and staging environments
 	//   - Cost-sensitive teams
 	//   - Air-gapped or on-prem deployments
-	//   - Learning and experimentation
+	//   - Ephemeral per-PR preview environments (created and torn down often)
 	//   - Edge deployments (k3s on Raspberry Pi)
 	//
 	// NOT RECOMMENDED FOR:

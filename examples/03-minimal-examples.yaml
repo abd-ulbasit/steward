@@ -2,8 +2,8 @@
 # MINIMAL EXAMPLES FOR QUICK TESTING
 # =============================================================================
 #
-# These are the simplest valid Applications for testing and learning.
-# Start here to verify your GoPlatform installation works.
+# The simplest valid Applications. Start here to smoke-test an installation
+# before applying anything with infrastructure attached.
 #
 # =============================================================================
 

@@ -356,10 +356,16 @@ Stated plainly rather than left for a reviewer to find:
   a breaking schema change.
 - **Infrastructure drift is reported, never corrected.** §3 explains why; it is
   still a gap if you expected enforcement.
-- **`Storage`, `mysql`, `memcached`, `sqs`, and `kafka` are schema-level only.**
-  The Kubernetes provider implements postgres (CNPG), redis (Spotahome), and
-  rabbitmq (RabbitMQ Cluster Operator). The CRD accepts the others; the provider
-  will report them as unsupported.
+- **`mysql`, `memcached`, `sqs`, and `kafka` are schema-level only.** The
+  Kubernetes provider implements postgres (CNPG), redis (Spotahome), and rabbitmq
+  (RabbitMQ Cluster Operator). The CRD accepts the others and the provider
+  rejects them with a typed `InvalidConfigError` naming the offending field —
+  clear, but it is admission-time validation that should arguably live in the
+  webhook instead.
+- **`storage` provisions a PVC whatever `type` says.** The spec models object
+  storage (`s3` / `gcs`); the Kubernetes provider creates a
+  PersistentVolumeClaim. The spec shape is ahead of the implementation and a
+  cloud provider is what would close the gap.
 - **Credentials are plain Kubernetes Secrets.** No External Secrets Operator, no
   CSI driver, no rotation.
 - **One database per Application, not shareable.** A consequence of §1.

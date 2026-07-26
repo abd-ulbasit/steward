@@ -31,12 +31,17 @@ limitations under the License.
 //   CreateOrUpdate returns Created/Updated both on first provisioning AND when
 //   correcting an external edit. The discriminator is the SPEC GENERATION:
 //
-//     drift  ==  (a child was Created/Updated)  AND  (spec did NOT change)
+//     drift  ==  (spec did NOT change)
+//                AND (a child was Created
+//                     OR a field this operator manages actually changed)
 //
 //   If spec.Generation == status.ObservedGeneration, the desired state is the
 //   same one we already reconciled — so any child that still needed work was
 //   changed by something outside the operator. That's drift. On a real spec
 //   edit, Generation > ObservedGeneration and Created/Updated is expected.
+//
+//   The second clause is narrower than a raw "Created or Updated" on purpose:
+//   see recoveredOrChanged below for why Updated is not trusted on its own.
 // =============================================================================
 
 package controller

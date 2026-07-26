@@ -52,7 +52,9 @@ never announces it at all.
 The discriminator used here is the spec generation:
 
 ```
-drift == (a child was Created/Updated) AND (spec.generation == status.observedGeneration)
+drift == (spec.generation == status.observedGeneration)
+         AND ( a child was Created
+               OR a field the operator manages actually changed )
 ```
 
 `observedGeneration` is written only at the end of a *successful* pass, so
@@ -152,19 +154,30 @@ Implemented and tested against a real API server (envtest):
 | `storage` | provisions a PersistentVolumeClaim regardless of whether `type` is `s3` or `gcs` — there is no object-storage backend yet, and the spec shape is ahead of the implementation |
 | Multi-version CRD + conversion webhook | not started |
 
-Test coverage, from `make test` (Ginkgo + envtest running a real kube-apiserver
-and etcd, not a fake client):
+Test coverage — every package `make test` reports, unabridged (Ginkgo + envtest
+running a real kube-apiserver and etcd, not a fake client):
 
 ```
 internal/webhook/v1alpha1   98.5%
 internal/controller         75.2%
 internal/provider           62.6%
+api/v1alpha1                 3.5%
+cmd                          0.0%
+test/utils                   0.0%
 ```
 
-128 Ginkgo specs — most against envtest — plus 45 table-driven Go tests, and a
-Kind-based e2e suite under `test/e2e`. The provider number is the lowest because
-its error and capability paths are exercised through `MockProvider` rather than
-against a live CNPG install.
+The low ones need explaining rather than hiding. `api/v1alpha1` is dominated by
+650 lines of generated `zz_generated.deepcopy.go`; the hand-written part is
+`conditions.go`, which is at 100% (`conditions_test.go`) and is the part that
+matters — the reconciler skips its status write when those helpers report no
+change, so a bug there turns the 5-minute resync into a write per Application per
+pass. `cmd` is the manager entry point and `test/utils` is e2e helpers; both run
+under `test/e2e`, neither has unit tests. `internal/provider` is the lowest
+number that reflects real risk: its error and capability paths run through
+`MockProvider` rather than against a live CNPG install.
+
+128 Ginkgo specs — most against envtest — plus 43 Go test functions, and a
+Kind-based e2e suite under `test/e2e`.
 
 ---
 

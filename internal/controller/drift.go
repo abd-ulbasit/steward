@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 // =============================================================================
-// DRIFT TRACKING (Milestone 9)
+// DRIFT TRACKING
 // =============================================================================
 //
 // A driftTracker accumulates the outcome of each child-resource apply during a

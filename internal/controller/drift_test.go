@@ -34,7 +34,7 @@ import (
 )
 
 // =============================================================================
-// TESTS: Drift Detection & Self-Healing (Milestone 9, envtest)
+// TESTS: Drift Detection & Self-Healing (envtest)
 // =============================================================================
 //
 // These prove the reconcile loop restores child resources after external

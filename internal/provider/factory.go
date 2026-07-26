@@ -205,15 +205,15 @@ func (f *Factory) createProvider(config *ProviderConfig) (InfrastructureProvider
 		return NewMockProvider(config), nil
 
 	case ProviderLocal:
-		// LocalProvider uses mocks by default for now
-		// Will be enhanced to use in-cluster operators in future milestones
+		// LocalProvider is mock-backed; use ProviderKubernetes for real
+		// in-cluster operators.
 		return NewMockProvider(config), nil
 
 	case ProviderAWS:
-		// AWSProvider not implemented yet (Milestone 7-12)
+		// AWSProvider is not implemented.
 		return nil, &ProviderNotConfiguredError{
 			Provider: ProviderAWS,
-			Message:  "AWS provider is not yet implemented; coming in Milestone 7-12",
+			Message:  "AWS provider is not implemented; use the kubernetes provider",
 		}
 
 	case ProviderGCP:

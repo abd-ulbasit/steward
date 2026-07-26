@@ -273,7 +273,6 @@ type InfrastructureProvider interface {
 // =============================================================================
 
 // CostEstimator can estimate monthly costs before provisioning.
-// Implements Milestone 17: Cost Estimation feature.
 type CostEstimator interface {
 	// EstimateCost returns estimated monthly cost in USD.
 	// Called before provisioning to show users expected costs.
@@ -296,7 +295,6 @@ type CostEstimate struct {
 }
 
 // DriftDetector can detect when infrastructure has drifted from desired state.
-// Implements Milestone 31: Drift Detection feature.
 type DriftDetector interface {
 	// DetectDrift compares current infrastructure state with desired state.
 	// Returns a list of differences, or empty if in sync.

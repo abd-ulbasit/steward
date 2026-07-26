@@ -256,7 +256,8 @@ type ApplicationReconciler struct {
 	// infrastructure (Terraform, cloud resources, etc.) during finalization.
 	//
 	// WHY THIS EXISTS:
-	//   - M5 requires explicit cleanup on delete, before finalizer removal
+	//   - External infrastructure must be torn down before the finalizer is
+	//     removed, and that teardown has to be pluggable per deployment
 	//   - We don't have real providers yet, so this hook keeps the controller
 	//     production-ready while enabling tests to simulate failure modes
 	//
@@ -518,7 +519,7 @@ func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	// =========================================================================
-	// M9: DRIFT DETECTION SETUP
+	// DRIFT DETECTION SETUP
 	// =========================================================================
 	//
 	// specUnchanged is the discriminator between "expected change" and "drift".
@@ -649,7 +650,7 @@ func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			}
 		}
 
-		// M9: infrastructure drift detection (read-only). The operators own these
+		// Infrastructure drift detection (read-only). The operators own these
 		// CRDs, so we report drift rather than overwrite aggressively; Provision()
 		// re-applies desired state on its own cadence. Best-effort — detection
 		// failure must never fail the reconcile.
@@ -663,7 +664,7 @@ func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	// =========================================================================
-	// M9: EVALUATE & REPORT DRIFT
+	// EVALUATE & REPORT DRIFT
 	// =========================================================================
 	//
 	// K8s child drift was already CORRECTED above (CreateOrUpdate overwrote any
@@ -737,7 +738,7 @@ func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		r.updateWorkloadConditions(ctx, &app, deploymentReady)
 		r.updateOverallReadyCondition(ctx, &app, serviceReady, infraReady)
 
-		// M9: reflect drift. True on the pass where drift was found/corrected,
+		// Reflect drift. True on the pass where drift was found/corrected,
 		// False once observed state matches desired again.
 		if driftDetectedNow {
 			meta.SetStatusCondition(&app.Status.Conditions, metav1.Condition{

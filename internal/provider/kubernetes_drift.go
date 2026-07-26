@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 // =============================================================================
-// INFRASTRUCTURE DRIFT DETECTION (Milestone 9)
+// INFRASTRUCTURE DRIFT DETECTION
 // =============================================================================
 //
 // This implements the optional DriftDetector capability for KubernetesProvider.

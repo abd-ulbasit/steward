@@ -1,4 +1,4 @@
-# Observability (Milestone 8)
+# Observability
 
 GoPlatform's observability has two distinct halves, and conflating them is the
 most common source of confusion:

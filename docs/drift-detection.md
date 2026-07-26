@@ -1,4 +1,4 @@
-# Drift Detection & Self-Healing (Milestone 9)
+# Drift Detection & Self-Healing
 
 Drift is the gap between **desired state** (the `Application` spec) and **actual
 state** (what's really in the cluster). Someone scales a Deployment by hand,
@@ -47,7 +47,7 @@ differs from what the mutate function produces — **including** fields the API
 server defaults that our `build*` functions don't set (Deployment `strategy`,
 `revisionHistoryLimit`, container `terminationMessagePath`, …). If we treated
 every `Updated` as drift, we'd emit `DriftCorrected` on *every* reconcile,
-forever. That's a false positive, and it's the trap M9 is really about.
+forever. That's a false positive, and avoiding it is most of the work.
 
 So the drift signal is **not** the raw `CreateOrUpdate` result. It is:
 

@@ -3,7 +3,7 @@
 A Kubernetes operator that turns a 20-line `Application` manifest into a running
 service with a Postgres cluster, injected credentials, autoscaling, a pod
 disruption budget, and tier-appropriate Prometheus alerts — then keeps all of it
-matching the manifest. Redis and RabbitMQ come from the same three lines each.
+matching the manifest. Redis and RabbitMQ are two more blocks of the same shape.
 
 ```yaml
 apiVersion: platform.platform.goplatform.io/v1alpha1
@@ -195,6 +195,9 @@ kubectl describe application application-sample
 The sample runs a `psql` connectivity check against the database the operator
 provisioned, using only the auto-injected environment variables — so a successful
 pod log is end-to-end proof that provisioning and credential wiring both worked.
+`./hack/validate-e2e.sh` scripts that whole lifecycle (create → CNPG Cluster
+appears → phase `Ready` → delete → everything cleaned up) and reports pass/fail
+per step.
 
 More manifests in [`examples/`](examples). Cluster setup detail in
 [docs/dev-cluster-setup.md](docs/dev-cluster-setup.md).

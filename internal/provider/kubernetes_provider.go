@@ -92,7 +92,7 @@ import (
 // =============================================================================
 // OPERATOR GVKs (Hard‑coded defaults)
 // =============================================================================
-// NOTE: These match the operator choices we agreed on in Milestone 7.
+// NOTE: These are the operators this provider targets by default.
 // If your cluster uses different operators, update these constants or
 // provide a custom ProviderConstructor to inject your own behavior.
 
@@ -171,7 +171,7 @@ func NewKubernetesProvider(
 		config.Kubernetes = &KubernetesConfig{}
 	}
 
-	// Default operator selections (align with Milestone 7 decisions)
+	// Default operator selections.
 	if config.Kubernetes.PostgresOperator == "" {
 		config.Kubernetes.PostgresOperator = "cnpg"
 	}

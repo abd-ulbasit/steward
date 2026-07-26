@@ -73,10 +73,9 @@ var _ = Describe("Aggregate metric wiring", func() {
 		}
 	}
 
-	// driveReconcile runs the loop a few times. The first pass adds the finalizer
-	// and requeues; later passes create the child resources and recompute the
-	// gauges. Reconcile is idempotent, so extra passes are harmless — we avoid
-	// inspecting the deprecated Result.Requeue field and just run enough passes.
+	// driveReconcile runs the loop a few times. One pass is enough today (the
+	// finalizer add and the child-resource creation happen together), but
+	// Reconcile is idempotent so extra passes only re-assert the gauges.
 	driveReconcile := func(r *ApplicationReconciler) {
 		for i := 0; i < 3; i++ {
 			_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: nn})

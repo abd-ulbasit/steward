@@ -83,18 +83,26 @@ var _ = Describe("Application Controller - Infrastructure Integration", func() {
 		return app, nn
 	}
 
-	// reconcileUntilStable calls Reconcile repeatedly until it stops requesting
-	// immediate requeue (Requeue: true). Returns the final result.
-	// This handles the finalizer-add requeue cycle: first Reconcile() adds the
-	// finalizer and returns Requeue:true, second Reconcile() does the actual work.
+	// reconcileUntilStable runs Reconcile until two consecutive passes return the
+	// same result, then returns that result. Reconcile is idempotent, so a stable
+	// result means the loop has converged.
+	//
+	// This deliberately does not inspect Result.Requeue (deprecated in
+	// controller-runtime v0.20): the reconciler now adds the finalizer and
+	// provisions in a single pass, so there is no "immediate requeue" signal to
+	// key off any more.
 	reconcileUntilStable := func(r *ApplicationReconciler, nn types.NamespacedName) (reconcile.Result, error) {
-		var result reconcile.Result
+		var result, previous reconcile.Result
 		var err error
 		for i := 0; i < 5; i++ {
 			result, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
-			if err != nil || !result.Requeue {
+			if err != nil {
 				return result, err
 			}
+			if i > 0 && result == previous {
+				return result, nil
+			}
+			previous = result
 		}
 		return result, err
 	}
@@ -309,7 +317,6 @@ var _ = Describe("Application Controller - Infrastructure Integration", func() {
 
 			By("Verifying no requeue (terminal failure)")
 			Expect(result.RequeueAfter).To(BeZero())
-			Expect(result.Requeue).To(BeFalse())
 
 			By("Verifying phase is Failed")
 			var app platformv1alpha1.Application
@@ -391,17 +398,9 @@ var _ = Describe("Application Controller - Infrastructure Integration", func() {
 			Expect(k8sClient.Delete(ctx, &app)).To(Succeed())
 
 			By("Reconciling the deletion")
-			// May need multiple reconciles for deletion flow
-			for i := 0; i < 5; i++ {
-				result, reconcileErr := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
-				if reconcileErr != nil {
-					err = reconcileErr
-					break
-				}
-				if !result.Requeue {
-					break
-				}
-			}
+			// handleDeletion stamps the deletion-start annotation and runs provider
+			// cleanup in the same pass, so a single reconcile finishes the flow.
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Verifying Destroy was called")

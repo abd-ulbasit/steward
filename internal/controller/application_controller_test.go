@@ -235,13 +235,17 @@ var _ = Describe("Application Controller", func() {
 			}
 		})
 
-		It("should add a finalizer on first reconcile", func() {
+		It("should add a finalizer and provision in the same reconcile", func() {
 			// =====================================================================
 			// TEST: FINALIZER ADDITION
 			// =====================================================================
 			//
-			// The first reconcile should add our finalizer to ensure we can
-			// clean up external resources before deletion.
+			// The first reconcile adds our finalizer so we can clean up external
+			// resources before deletion, and then continues provisioning in the
+			// same pass. Adding a finalizer is a metadata write that does not bump
+			// metadata.generation, so GenerationChangedPredicate would swallow the
+			// resulting watch event — returning early here would strand the object
+			// until the next resync.
 			//
 			// =====================================================================
 
@@ -251,12 +255,16 @@ var _ = Describe("Application Controller", func() {
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeTrue(), "should requeue after adding finalizer")
 
 			By("Verifying the finalizer was added")
 			app := &platformv1alpha1.Application{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, app)).To(Succeed())
 			Expect(app.Finalizers).To(ContainElement(applicationFinalizer))
+
+			By("Verifying the same pass also provisioned children and scheduled a resync")
+			Expect(result.RequeueAfter).To(Equal(requeueAfterSuccess))
+			deployment := &appsv1.Deployment{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, deployment)).To(Succeed())
 		})
 
 		It("should create a Deployment on reconcile", func() {
@@ -697,20 +705,16 @@ var _ = Describe("Application Controller", func() {
 			Expect(k8sClient.Get(ctx, typeNamespacedName, app)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, app)).To(Succeed())
 
-			By("Reconciling to handle deletion (may require multiple reconciles)")
+			By("Reconciling to handle deletion")
 			reconciler := createReconciler()
 
-			// The deletion handling now tracks deletion start time via annotation,
-			// which requires a requeue after setting the annotation.
-			// We reconcile multiple times until the finalizer is removed.
-			for i := 0; i < 3; i++ {
-				result, err := reconciler.Reconcile(ctx, reconcile.Request{
-					NamespacedName: typeNamespacedName,
-				})
-				if err != nil || !result.Requeue {
-					break
-				}
-			}
+			// handleDeletion stamps the deletion-start annotation and then runs
+			// cleanup in the same pass, so one reconcile is enough. Extra passes
+			// are harmless (the flow is idempotent) but should not be needed.
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
 
 			By("Verifying the Application was deleted")
 			Eventually(func() bool {
@@ -725,16 +729,22 @@ var _ = Describe("Application Controller", func() {
 			Expect(k8sClient.Get(ctx, typeNamespacedName, app)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, app)).To(Succeed())
 
-			By("Reconciling to set deletion annotation")
+			By("Reconciling with a cleanup hook that fails")
 			reconciler := createReconcilerWithCleanup(func(ctx context.Context, app *platformv1alpha1.Application) error {
 				return fmt.Errorf("simulated cleanup failure")
 			})
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+			result, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
-			Expect(err).NotTo(HaveOccurred())
+			Expect(err).To(HaveOccurred())
 
-			By("Reconciling again to trigger cleanup failure")
+			// controller-runtime ignores Result when the error is non-nil, so the
+			// failure path must not pretend to schedule its own retry — the error
+			// alone drives the rate-limited, backed-off requeue.
+			Expect(result.RequeueAfter).To(BeZero(),
+				"a non-nil error must be paired with a zero Result")
+
+			By("Verifying the failure is retried on subsequent passes")
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
@@ -772,7 +782,7 @@ var _ = Describe("Application Controller", func() {
 			})
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
+			Expect(result.RequeueAfter).To(BeZero())
 		})
 	})
 

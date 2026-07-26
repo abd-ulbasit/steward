@@ -469,6 +469,18 @@ func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	//   2. Create external resources SECOND
 	//   Otherwise deletion can slip through between 1 and 2.
 	//
+	// WHY WE CONTINUE INSTEAD OF REQUEUEING:
+	//   Adding a finalizer touches metadata, not spec, so it does NOT bump
+	//   metadata.generation. Our primary watch is filtered by
+	//   GenerationChangedPredicate, which means the resulting update event is
+	//   dropped — an early `return` here would rely on `Result.Requeue`
+	//   (deprecated in controller-runtime v0.20+) to get a second pass.
+	//
+	//   The client decodes the API server's response back into `app`, so the
+	//   in-memory object already carries the finalizer and a fresh
+	//   resourceVersion. Falling through provisions in the same pass and saves
+	//   one full reconcile round-trip per Application.
+	//
 	// =========================================================================
 
 	if !controllerutil.ContainsFinalizer(&app, applicationFinalizer) {
@@ -478,8 +490,6 @@ func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			logger.Error(err, "failed to add finalizer")
 			return ctrl.Result{}, err
 		}
-		// Requeue to continue with reconciliation
-		return ctrl.Result{Requeue: true}, nil
 	}
 
 	// =========================================================================
@@ -781,9 +791,12 @@ func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	//
 	// OPTIONS:
 	//   Result{} + nil          → Done, don't requeue
-	//   Result{Requeue: true}   → Requeue immediately (rate-limited)
 	//   Result{RequeueAfter: X} → Requeue after duration X
 	//   Result{} + error        → Requeue with exponential backoff
+	//
+	// Result{Requeue: true} is deliberately absent: controller-runtime
+	// deprecated it in v0.20 because a rate-limiter-derived delay is the wrong
+	// tool for "come back soon". Every path here states its own interval.
 	//
 	// We always requeue after some time to catch drift (e.g., someone
 	// manually deleted the Deployment). This is "reconciliation" - always
@@ -935,14 +948,16 @@ func (r *ApplicationReconciler) handleDeletion(ctx context.Context, app *platfor
 		app.Annotations = make(map[string]string)
 	}
 
+	// As with the finalizer above, this is a metadata-only write: we continue in
+	// the same pass rather than returning a deprecated `Result.Requeue`. Cleanup
+	// is idempotent, so doing it immediately after stamping the annotation is
+	// safe and removes a reconcile round-trip from the delete path.
 	if _, exists := app.Annotations[deletionStartAnnotation]; !exists {
 		app.Annotations[deletionStartAnnotation] = time.Now().Format(time.RFC3339)
 		if err := r.Update(ctx, app); err != nil {
 			logger.Error(err, "failed to set deletion start annotation")
 			return ctrl.Result{}, err
 		}
-		// Requeue to continue after annotation is set
-		return ctrl.Result{Requeue: true}, nil
 	}
 
 	// Check if deletion is taking too long
@@ -974,11 +989,19 @@ func (r *ApplicationReconciler) handleDeletion(ctx context.Context, app *platfor
 	//
 	// =========================================================================
 
+	// NOTE ON RESULT + ERROR:
+	//   controller-runtime IGNORES Result whenever the returned error is non-nil
+	//   (and logs a warning about the combination). Returning
+	//   `{RequeueAfter: 10s}, err` therefore does not mean "retry in 10s" — the
+	//   error alone drives a rate-limited, exponentially backed-off requeue.
+	//   Cleanup failures are exactly the case where backoff is what we want, so
+	//   these paths return a zero Result and let the error speak.
+
 	if r.ProviderFactory != nil {
 		prov, err := r.getProvider()
 		if err != nil {
 			logger.Error(err, "failed to get provider during deletion")
-			return ctrl.Result{RequeueAfter: requeueAfterError}, err
+			return ctrl.Result{}, err
 		}
 
 		if err := prov.Destroy(ctx, app); err != nil {
@@ -999,8 +1022,8 @@ func (r *ApplicationReconciler) handleDeletion(ctx context.Context, app *platfor
 				r.Recorder.Event(app, corev1.EventTypeWarning, "CleanupFailed",
 					fmt.Sprintf("External cleanup failed: %v", err))
 			}
-			// Keep finalizer, requeue to retry cleanup
-			return ctrl.Result{RequeueAfter: requeueAfterError}, err
+			// Keep the finalizer and let the error drive a backed-off retry.
+			return ctrl.Result{}, err
 		}
 	}
 

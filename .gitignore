@@ -65,12 +65,3 @@ temp/
 
 # Local environment overrides (see config.example.yaml for the documented settings)
 .env
-
-# Local tooling / assistant configuration — machine-specific, not part of the operator
-.claude/
-.serena/
-CLAUDE.md
-AGENTS.md
-
-# Personal milestone tracker. Durable design rationale lives in docs/DESIGN-DECISIONS.md.
-PROGRESS.md

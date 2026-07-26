@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# validate-e2e.sh — End-to-end lifecycle validation for GoPlatform
+# validate-e2e.sh — End-to-end lifecycle validation for Steward
 # =============================================================================
 #
 # Prerequisites: Kind cluster created by hack/setup-dev-cluster.sh
@@ -18,7 +18,7 @@
 
 set -euo pipefail
 
-CLUSTER_NAME="goplatform-dev"
+CLUSTER_NAME="steward-dev"
 CONTEXT="kind-${CLUSTER_NAME}"
 SAMPLE="config/samples/platform_v1alpha1_application.yaml"
 APP_NAME="application-sample"
@@ -89,7 +89,7 @@ if [ "$CNPG_FOUND" = true ]; then
 else
   fail "CNPG Cluster CR '${CNPG_CLUSTER_NAME}' not found after 60s"
   info "Debug: kubectl get clusters.postgresql.cnpg.io -n $NAMESPACE --context $CONTEXT"
-  info "Debug: kubectl logs -n goplatform-system deploy/goplatform-controller-manager --context $CONTEXT --tail=50"
+  info "Debug: kubectl logs -n steward-system deploy/steward-controller-manager --context $CONTEXT --tail=50"
 fi
 
 # ── Step 3: Wait for Application phase=Ready ────────────────────────────────
@@ -168,7 +168,7 @@ if [ "$NO_CLEANUP" = true ]; then
   info "  kubectl describe application $APP_NAME -n $NAMESPACE --context $CONTEXT"
   info "  kubectl get clusters.postgresql.cnpg.io $CNPG_CLUSTER_NAME -n $NAMESPACE --context $CONTEXT -o yaml"
   info "  kubectl get secret $SECRET_NAME -n $NAMESPACE --context $CONTEXT -o jsonpath='{.data}'"
-  info "  kubectl logs -n goplatform-system deploy/goplatform-controller-manager --context $CONTEXT --tail=50"
+  info "  kubectl logs -n steward-system deploy/steward-controller-manager --context $CONTEXT --tail=50"
   echo ""
   info "To clean up manually:"
   info "  kubectl delete application $APP_NAME -n $NAMESPACE --context $CONTEXT"

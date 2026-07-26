@@ -1,5 +1,5 @@
 # Image URL to use all building/pushing image targets
-IMG ?= controller:latest
+IMG ?= steward:latest
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -65,7 +65,7 @@ test: manifests generate fmt vet setup-envtest ## Run tests.
 # Targeting a different vendor means changing the setup under 'test/e2e'.
 # CertManager is installed by default; skip with:
 # - CERT_MANAGER_INSTALL_SKIP=true
-KIND_CLUSTER ?= goplatform-test-e2e
+KIND_CLUSTER ?= steward-test-e2e
 
 .PHONY: setup-test-e2e
 setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
@@ -134,10 +134,10 @@ PLATFORMS ?= linux/arm64,linux/amd64,linux/s390x,linux/ppc64le
 docker-buildx: ## Build and push docker image for the manager for cross-platform support
 	# copy existing Dockerfile and insert --platform=${BUILDPLATFORM} into Dockerfile.cross, and preserve the original Dockerfile
 	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
-	- $(CONTAINER_TOOL) buildx create --name goplatform-builder
-	$(CONTAINER_TOOL) buildx use goplatform-builder
+	- $(CONTAINER_TOOL) buildx create --name steward-builder
+	$(CONTAINER_TOOL) buildx use steward-builder
 	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${IMG} -f Dockerfile.cross .
-	- $(CONTAINER_TOOL) buildx rm goplatform-builder
+	- $(CONTAINER_TOOL) buildx rm steward-builder
 	rm Dockerfile.cross
 
 .PHONY: build-installer
@@ -152,8 +152,8 @@ build-installer: manifests generate kustomize ## Generate a consolidated YAML wi
 CERT_MANAGER_VERSION ?= v1.17.2
 CNPG_VERSION ?= 1.25.0
 PROM_OPERATOR_CRD_VERSION ?= v0.89.0
-DEV_CLUSTER ?= goplatform-dev
-DEV_IMG ?= goplatform:dev
+DEV_CLUSTER ?= steward-dev
+DEV_IMG ?= steward:dev
 
 .PHONY: dev-setup
 dev-setup: dev-cluster install-cert-manager install-prometheus-crds install-cnpg install ## Create Kind cluster and install all dependencies.
@@ -167,8 +167,8 @@ dev-deploy: ## Build, load into Kind, and deploy the operator.
 	$(MAKE) deploy IMG=$(DEV_IMG)
 	@echo ""
 	@echo "Operator deployed. Waiting for rollout..."
-	"$(KUBECTL)" wait --for=condition=Available deployment/goplatform-controller-manager \
-		-n goplatform-system --timeout=120s
+	"$(KUBECTL)" wait --for=condition=Available deployment/steward-controller-manager \
+		-n steward-system --timeout=120s
 	@echo "Operator is ready."
 
 .PHONY: dev-load

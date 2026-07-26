@@ -1,4 +1,4 @@
-# GoPlatform Configuration Example
+# Steward Configuration Example
 # Copy to config.yaml and customize
 
 # Controller settings
@@ -12,8 +12,8 @@ controller:
   # Leader election for high availability
   leaderElection:
     enabled: true
-    resourceName: goplatform-leader-election
-    resourceNamespace: goplatform-system
+    resourceName: steward-leader-election
+    resourceNamespace: steward-system
   
   # Worker counts per controller
   workers:
@@ -27,14 +27,14 @@ terraform:
   binaryPath: "/usr/local/bin/terraform"
   
   # Working directory for terraform operations
-  workDir: "/tmp/goplatform-terraform"
+  workDir: "/tmp/steward-terraform"
   
   # State backend configuration
   stateBackend:
     type: s3  # s3 or local
-    bucket: "goplatform-terraform-state"
+    bucket: "steward-terraform-state"
     region: "us-east-1"
-    dynamoDBTable: "goplatform-terraform-locks"
+    dynamoDBTable: "steward-terraform-locks"
     encrypt: true
   
   # Execution settings
@@ -54,7 +54,7 @@ aws:
   # Tags applied to all resources
   defaultTags:
     Environment: "production"
-    ManagedBy: "goplatform"
+    ManagedBy: "steward"
 
 # Platform API settings
 api:
@@ -65,7 +65,7 @@ api:
   auth:
     type: "jwt"  # jwt or apikey
     jwtIssuer: "https://auth.example.com"
-    jwtAudience: "goplatform"
+    jwtAudience: "steward"
 
 # Observability settings
 observability:

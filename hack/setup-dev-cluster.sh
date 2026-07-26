@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# setup-dev-cluster.sh — Create a Kind cluster with CNPG for GoPlatform dev
+# setup-dev-cluster.sh — Create a Kind cluster with CNPG for Steward dev
 # =============================================================================
 #
 # Usage:
@@ -13,11 +13,11 @@
 
 set -euo pipefail
 
-CLUSTER_NAME="goplatform-dev"
+CLUSTER_NAME="steward-dev"
 CNPG_VERSION="1.25.0"
 CERT_MANAGER_VERSION="v1.17.2"
 PROM_OPERATOR_CRD_VERSION="v0.89.0"
-IMG="goplatform:dev"
+IMG="steward:dev"
 SKIP_BUILD=false
 SKIP_OPERATORS=false
 TEARDOWN=false
@@ -120,8 +120,8 @@ else
   info "Skipping operator installation (--skip-operators)."
 fi
 
-# ── Step 5: Install GoPlatform CRDs ─────────────────────────────────────────
-info "Installing GoPlatform CRDs..."
+# ── Step 5: Install Steward CRDs ─────────────────────────────────────────
+info "Installing Steward CRDs..."
 make install
 info "CRDs installed."
 
@@ -138,12 +138,12 @@ else
 fi
 
 # ── Step 7: Deploy controller ────────────────────────────────────────────────
-info "Deploying GoPlatform controller..."
+info "Deploying Steward controller..."
 make deploy IMG="$IMG"
 
 info "Waiting for controller to be ready..."
-kubectl wait --for=condition=Available deployment/goplatform-controller-manager \
-  -n goplatform-system --context "kind-${CLUSTER_NAME}" --timeout=120s
+kubectl wait --for=condition=Available deployment/steward-controller-manager \
+  -n steward-system --context "kind-${CLUSTER_NAME}" --timeout=120s
 info "Controller is ready."
 
 # ── Done ─────────────────────────────────────────────────────────────────────
@@ -154,7 +154,7 @@ info "============================================"
 info ""
 info " Cluster:    kind-${CLUSTER_NAME}"
 info " CNPG:       v${CNPG_VERSION}"
-info " Controller: deployed in goplatform-system"
+info " Controller: deployed in steward-system"
 info ""
 info " Next steps:"
 info "   kubectl apply -f config/samples/platform_v1alpha1_application.yaml"

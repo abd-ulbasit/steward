@@ -36,7 +36,7 @@ RUN apk add --no-cache ca-certificates tzdata
 
 # Create non-root user with explicit numeric UID/GID.
 # Kubernetes runAsNonRoot requires a numeric user to verify non-root status.
-RUN adduser -D -u 65532 -g '' goplatform
+RUN adduser -D -u 65532 -g '' steward
 
 # Copy binary from builder
 COPY --from=builder /manager /manager

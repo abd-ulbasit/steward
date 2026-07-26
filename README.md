@@ -1,4 +1,4 @@
-# GoPlatform
+# Steward
 
 A Kubernetes operator that turns a 20-line `Application` manifest into a running
 service with a Postgres cluster, injected credentials, autoscaling, a pod
@@ -6,7 +6,7 @@ disruption budget, and tier-appropriate Prometheus alerts — then keeps all of 
 matching the manifest. Redis and RabbitMQ are two more blocks of the same shape.
 
 ```yaml
-apiVersion: platform.platform.goplatform.io/v1alpha1
+apiVersion: platform.steward.sh/v1alpha1
 kind: Application
 metadata:
   name: payments-api
@@ -178,6 +178,31 @@ number that reflects real risk: its error and capability paths run through
 
 128 Ginkgo specs — most against envtest — plus 43 Go test functions, and a
 Kind-based e2e suite under `test/e2e`.
+
+---
+
+## Renamed from `goplatform` — breaking API group change
+
+This project was called `goplatform` until 2026-07-27. The repository is now
+`github.com/abd-ulbasit/steward` (GitHub redirects the old URL), the Go module
+is `github.com/abd-ulbasit/steward`, and the CRD moved with it:
+
+| | Before | After |
+|---|---|---|
+| API group | `platform.platform.goplatform.io` | `platform.steward.sh` |
+| `apiVersion` | `platform.platform.goplatform.io/v1alpha1` | `platform.steward.sh/v1alpha1` |
+| Finalizer | `platform.goplatform.io/finalizer` | `platform.steward.sh/finalizer` |
+| Generated labels | `platform.goplatform.io/{team,owner,tier}` | `platform.steward.sh/{team,owner,tier}` |
+| Metric prefix | `goplatform_` | `steward_` |
+| Namespace / name prefix | `goplatform-system`, `goplatform-` | `steward-system`, `steward-` |
+| Provider env var | `GOPLATFORM_PROVIDER` | `STEWARD_PROVIDER` |
+
+There is no conversion webhook and no migration path: the old and new groups are
+unrelated CRDs as far as the API server is concerned. Existing `Application`
+resources are **not** carried over. This is a personal project with no external
+users, so the break was taken rather than papered over. To move an existing
+cluster, delete the old CRD and its CRs, install the new CRD, and re-apply the
+manifests with the new `apiVersion`.
 
 ---
 

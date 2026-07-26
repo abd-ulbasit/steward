@@ -8,7 +8,7 @@ crying wolf.
 
 ## Two kinds of drift
 
-| | What happened | How GoPlatform handles it |
+| | What happened | How Steward handles it |
 |---|---|---|
 | **Spec drift** | A managed field was changed externally (replicas 3→5, a port edited) | **Auto-corrected** — `CreateOrUpdate` overwrites it back to desired, and we flag `DriftDetected` |
 | **State drift** | A resource was deleted or crashed | **Recovered** — the watch re-triggers reconcile, `CreateOrUpdate` recreates it |

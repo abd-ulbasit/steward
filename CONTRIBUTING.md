@@ -1,6 +1,6 @@
-# Contributing to GoPlatform
+# Contributing to Steward
 
-Thank you for considering contributing to GoPlatform! This document outlines the process for contributing to the project.
+Thank you for considering contributing to Steward! This document outlines the process for contributing to the project.
 
 ## Development Setup
 
@@ -16,8 +16,8 @@ downloaded into `bin/` by the Makefile on first use.
 ### Getting Started
 
 ```bash
-git clone https://github.com/abd-ulbasit/goplatform.git
-cd goplatform
+git clone https://github.com/abd-ulbasit/steward.git
+cd steward
 go mod download
 
 # Kind cluster + cert-manager + Prometheus Operator CRDs + CNPG + the Application CRD
@@ -33,7 +33,7 @@ you already have, use `make install`.
 ## Project Structure
 
 ```
-goplatform/
+steward/
 ├── api/v1alpha1/        # CRD types & schema markers
 ├── cmd/                 # Entry point (manager: cmd/main.go)
 ├── internal/

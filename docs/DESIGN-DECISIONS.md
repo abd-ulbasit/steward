@@ -281,7 +281,7 @@ RDS instance; the finalizer path is unchanged.
 
 ### Deletion timeout is observed, not enforced
 
-`handleDeletion` stamps `platform.goplatform.io/deletion-started` on the first
+`handleDeletion` stamps `platform.steward.sh/deletion-started` on the first
 pass and emits a `DeletionStuck` warning event once cleanup exceeds 30 minutes.
 It does **not** force-remove the finalizer.
 

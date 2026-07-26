@@ -31,8 +31,8 @@ kubectl get applications -w
 |-----------|---------|-----------|---------|
 | Kind cluster | latest | n/a | Local Kubernetes |
 | CNPG operator | v1.25.0 | cnpg-system | PostgreSQL provisioning |
-| GoPlatform CRDs | latest | n/a | Application CRD |
-| GoPlatform controller | dev build | goplatform-system | Reconciliation |
+| Steward CRDs | latest | n/a | Application CRD |
+| Steward controller | dev build | steward-system | Reconciliation |
 
 ## Script Flags
 
@@ -52,9 +52,9 @@ After making code changes:
 ./hack/setup-dev-cluster.sh --skip-operators
 
 # Or manually: rebuild image, load into Kind, restart controller
-make docker-build IMG=goplatform:dev
-kind load docker-image goplatform:dev --name goplatform-dev
-kubectl rollout restart deployment/goplatform-controller-manager -n goplatform-system
+make docker-build IMG=steward:dev
+kind load docker-image steward:dev --name steward-dev
+kubectl rollout restart deployment/steward-controller-manager -n steward-system
 ```
 
 ## Resource Naming Conventions
@@ -75,9 +75,9 @@ The KubernetesProvider creates child resources following this pattern:
 | Problem | Diagnosis | Fix |
 |---------|-----------|-----|
 | CNPG operator not ready | `kubectl get pods -n cnpg-system` | Wait or reinstall: `./hack/setup-dev-cluster.sh` |
-| Controller 403 Forbidden | `kubectl logs -n goplatform-system deploy/goplatform-controller-manager` | Run `make manifests && make deploy IMG=goplatform:dev` |
+| Controller 403 Forbidden | `kubectl logs -n steward-system deploy/steward-controller-manager` | Run `make manifests && make deploy IMG=steward:dev` |
 | CNPG Cluster stuck | `kubectl describe cluster <name>` | Check CNPG logs: `kubectl logs -n cnpg-system deploy/cnpg-controller-manager` |
-| Image not found in Kind | `kind load docker-image` failed | Ensure docker has the image: `docker images \| grep goplatform` |
+| Image not found in Kind | `kind load docker-image` failed | Ensure docker has the image: `docker images \| grep steward` |
 | Application stuck Provisioning | `kubectl describe application <name>` | Check conditions for specific component failure |
 
 ## Adding More Operators

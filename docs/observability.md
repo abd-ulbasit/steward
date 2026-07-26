@@ -1,6 +1,6 @@
 # Observability
 
-GoPlatform's observability has two distinct halves, and conflating them is the
+Steward's observability has two distinct halves, and conflating them is the
 most common source of confusion:
 
 | Half | Question it answers | Where it lives |
@@ -21,7 +21,7 @@ configuration. This is the same pattern CNPG, ArgoCD, and Strimzi use.
 
 ```
   ┌────────────────┐   creates    ┌─────────────────────┐  watches  ┌────────────┐
-  │ GoPlatform     │─────────────►│ ServiceMonitor CR   │──────────►│ Prometheus │
+  │ Steward        │─────────────►│ ServiceMonitor CR   │──────────►│ Prometheus │
   │ controller     │              │ PrometheusRule CR   │           │ Operator   │
   └────────────────┘              └─────────────────────┘           └─────┬──────┘
                                                                           │ writes config
@@ -59,11 +59,11 @@ controller-runtime metrics on the manager's metrics endpoint.
 
 | Metric | Type | Labels | Meaning |
 |--------|------|--------|---------|
-| `goplatform_controller_reconcile_duration_seconds` | Histogram | `name, namespace, result` | How long each reconcile takes; watch p99 |
-| `goplatform_controller_reconcile_errors_total` | Counter | `name, namespace, error_type` | Reconcile failures by category |
-| `goplatform_application_phase_info` | Gauge | `name, namespace, phase, tier, team` | `1` for the Application's current phase |
-| `goplatform_controller_managed_resources` | Gauge | `namespace, resource_type` | Count of controller-owned child resources |
-| `goplatform_application_total` | Gauge | `namespace, tier` | Count of Applications per tier |
+| `steward_controller_reconcile_duration_seconds` | Histogram | `name, namespace, result` | How long each reconcile takes; watch p99 |
+| `steward_controller_reconcile_errors_total` | Counter | `name, namespace, error_type` | Reconcile failures by category |
+| `steward_application_phase_info` | Gauge | `name, namespace, phase, tier, team` | `1` for the Application's current phase |
+| `steward_controller_managed_resources` | Gauge | `namespace, resource_type` | Count of controller-owned child resources |
+| `steward_application_total` | Gauge | `namespace, tier` | Count of Applications per tier |
 
 ### Per-app vs. aggregate gauges — a subtle but important distinction
 
@@ -146,11 +146,11 @@ Run `make manifests` after changing these to regenerate `config/rbac/role.yaml`.
 helm install kube-prom prometheus-community/kube-prometheus-stack -n monitoring --create-namespace
 
 # Apply an Application with observability enabled, then inspect the generated CRs
-kubectl get servicemonitor,prometheusrule -l app.kubernetes.io/managed-by=goplatform -A
+kubectl get servicemonitor,prometheusrule -l app.kubernetes.io/managed-by=steward -A
 
 # Controller's own metrics
-kubectl port-forward -n goplatform-system deploy/goplatform-controller-manager 8443:8443
-curl -sk https://localhost:8443/metrics | grep goplatform_
+kubectl port-forward -n steward-system deploy/steward-controller-manager 8443:8443
+curl -sk https://localhost:8443/metrics | grep steward_
 ```
 
 Without the Prometheus Operator installed, the controller runs fine and reports

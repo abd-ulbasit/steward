@@ -1,5 +1,5 @@
 /*
-Copyright 2026 GoPlatform Authors.
+Copyright 2026 Steward Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -54,7 +54,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	"github.com/abd-ulbasit/goplatform/internal/provider"
+	"github.com/abd-ulbasit/steward/internal/provider"
 )
 
 // driftRecord is the outcome of reconciling one child resource.

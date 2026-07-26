@@ -3,20 +3,20 @@
 # and allow the plugins properly work.
 # More info: https://book.kubebuilder.io/reference/project-config.html
 cliVersion: 4.11.1
-domain: platform.goplatform.io
+domain: steward.sh
 layout:
 - go.kubebuilder.io/v4
-projectName: goplatform
-repo: github.com/abd-ulbasit/goplatform
+projectName: steward
+repo: github.com/abd-ulbasit/steward
 resources:
 - api:
     crdVersion: v1
     namespaced: true
   controller: true
-  domain: platform.goplatform.io
+  domain: steward.sh
   group: platform
   kind: Application
-  path: github.com/abd-ulbasit/goplatform/api/v1alpha1
+  path: github.com/abd-ulbasit/steward/api/v1alpha1
   version: v1alpha1
   webhooks:
     defaulting: true

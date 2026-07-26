@@ -1,5 +1,5 @@
 /*
-Copyright 2026 GoPlatform Authors.
+Copyright 2026 Steward Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -39,7 +39,7 @@ import (
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	platformv1alpha1 "github.com/abd-ulbasit/goplatform/api/v1alpha1"
+	platformv1alpha1 "github.com/abd-ulbasit/steward/api/v1alpha1"
 )
 
 // helper to create a minimal valid Application for testing.
@@ -90,13 +90,13 @@ var _ = Describe("Application Webhook", func() {
 
 		It("Should set managed-by label", func() {
 			Expect(defaulter.Default(ctx, obj)).To(Succeed())
-			Expect(obj.Labels).To(HaveKeyWithValue("app.kubernetes.io/managed-by", "goplatform"))
+			Expect(obj.Labels).To(HaveKeyWithValue("app.kubernetes.io/managed-by", "steward"))
 		})
 
 		It("Should set team label from spec.team", func() {
 			obj.Spec.Team = "payments"
 			Expect(defaulter.Default(ctx, obj)).To(Succeed())
-			Expect(obj.Labels).To(HaveKeyWithValue("platform.goplatform.io/team", "payments"))
+			Expect(obj.Labels).To(HaveKeyWithValue("platform.steward.sh/team", "payments"))
 		})
 
 		It("Should preserve existing labels while adding new ones", func() {
@@ -105,8 +105,8 @@ var _ = Describe("Application Webhook", func() {
 			}
 			Expect(defaulter.Default(ctx, obj)).To(Succeed())
 			Expect(obj.Labels).To(HaveKeyWithValue("custom-label", "custom-value"))
-			Expect(obj.Labels).To(HaveKeyWithValue("app.kubernetes.io/managed-by", "goplatform"))
-			Expect(obj.Labels).To(HaveKeyWithValue("platform.goplatform.io/team", "test-team"))
+			Expect(obj.Labels).To(HaveKeyWithValue("app.kubernetes.io/managed-by", "steward"))
+			Expect(obj.Labels).To(HaveKeyWithValue("platform.steward.sh/team", "test-team"))
 		})
 
 		It("Should not overwrite existing managed-by label", func() {

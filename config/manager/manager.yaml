@@ -3,7 +3,7 @@ kind: Namespace
 metadata:
   labels:
     control-plane: controller-manager
-    app.kubernetes.io/name: goplatform
+    app.kubernetes.io/name: steward
     app.kubernetes.io/managed-by: kustomize
   name: system
 ---
@@ -14,13 +14,13 @@ metadata:
   namespace: system
   labels:
     control-plane: controller-manager
-    app.kubernetes.io/name: goplatform
+    app.kubernetes.io/name: steward
     app.kubernetes.io/managed-by: kustomize
 spec:
   selector:
     matchLabels:
       control-plane: controller-manager
-      app.kubernetes.io/name: goplatform
+      app.kubernetes.io/name: steward
   replicas: 1
   template:
     metadata:
@@ -28,7 +28,7 @@ spec:
         kubectl.kubernetes.io/default-container: manager
       labels:
         control-plane: controller-manager
-        app.kubernetes.io/name: goplatform
+        app.kubernetes.io/name: steward
     spec:
       # Uncomment to pin the manager to specific architectures. The image is
       # built multi-arch by the docker-buildx target, so this is only needed on
@@ -65,7 +65,7 @@ spec:
         image: controller:latest
         name: manager
         env:
-          - name: GOPLATFORM_PROVIDER
+          - name: STEWARD_PROVIDER
             value: "kubernetes"
         ports: []
         securityContext:

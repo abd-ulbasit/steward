@@ -1,5 +1,5 @@
 /*
-Copyright 2026 GoPlatform Authors.
+Copyright 2026 Steward Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ limitations under the License.
 // APPLICATION CONTROLLER - CORE RECONCILIATION LOGIC
 // =============================================================================
 //
-// This is the brain of GoPlatform's operator. It watches Application CRDs
+// This is the brain of Steward's operator. It watches Application CRDs
 // and reconciles the cluster state to match the desired specification.
 //
 // CONTROLLER-RUNTIME ARCHITECTURE:
@@ -167,8 +167,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
-	platformv1alpha1 "github.com/abd-ulbasit/goplatform/api/v1alpha1"
-	"github.com/abd-ulbasit/goplatform/internal/provider"
+	platformv1alpha1 "github.com/abd-ulbasit/steward/api/v1alpha1"
+	"github.com/abd-ulbasit/steward/internal/provider"
 )
 
 // =============================================================================
@@ -178,7 +178,7 @@ import (
 const (
 	// applicationFinalizer is attached to Applications to ensure cleanup
 	// before deletion. See handleDeletion() for detailed explanation.
-	applicationFinalizer = "platform.goplatform.io/finalizer"
+	applicationFinalizer = "platform.steward.sh/finalizer"
 
 	// requeueAfterError is the delay before retrying after a transient error.
 	// We use a fixed delay here; the work queue adds exponential backoff.
@@ -195,7 +195,7 @@ const (
 
 	// deletionStartAnnotation tracks when deletion cleanup started.
 	// Used to detect stuck deletions that exceed the grace period.
-	deletionStartAnnotation = "platform.goplatform.io/deletion-started"
+	deletionStartAnnotation = "platform.steward.sh/deletion-started"
 )
 
 // =============================================================================
@@ -305,9 +305,9 @@ type ApplicationReconciler struct {
 // =============================================================================
 
 // RBAC for our CRD
-// +kubebuilder:rbac:groups=platform.platform.goplatform.io,resources=applications,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=platform.platform.goplatform.io,resources=applications/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=platform.platform.goplatform.io,resources=applications/finalizers,verbs=update
+// +kubebuilder:rbac:groups=platform.steward.sh,resources=applications,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=platform.steward.sh,resources=applications/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=platform.steward.sh,resources=applications/finalizers,verbs=update
 
 // RBAC for Kubernetes resources we create
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
@@ -853,7 +853,7 @@ func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 // emptied namespace does not leave a stale, "stuck" gauge value behind.
 func (r *ApplicationReconciler) updateManagedResourceMetrics(ctx context.Context, namespace string) {
 	logger := log.FromContext(ctx)
-	selector := client.MatchingLabels{"app.kubernetes.io/managed-by": "goplatform"}
+	selector := client.MatchingLabels{"app.kubernetes.io/managed-by": "steward"}
 
 	var deployments appsv1.DeploymentList
 	if err := r.List(ctx, &deployments, client.InNamespace(namespace), selector); err != nil {
@@ -2030,13 +2030,13 @@ func (r *ApplicationReconciler) buildLabels(app *platformv1alpha1.Application) m
 		// Standard K8s labels (kubernetes.io/docs/concepts/overview/working-with-objects/common-labels/)
 		"app.kubernetes.io/name":       app.Name,
 		"app.kubernetes.io/instance":   app.Name,
-		"app.kubernetes.io/managed-by": "goplatform",
-		"app.kubernetes.io/part-of":    "goplatform",
+		"app.kubernetes.io/managed-by": "steward",
+		"app.kubernetes.io/part-of":    "steward",
 
-		// GoPlatform custom labels (sanitized to be valid label values)
-		"platform.goplatform.io/team":  sanitizeLabelValue(app.Spec.Team),
-		"platform.goplatform.io/owner": sanitizeLabelValue(app.Spec.Owner),
-		"platform.goplatform.io/tier":  string(app.Spec.Tier),
+		// Steward custom labels (sanitized to be valid label values)
+		"platform.steward.sh/team":  sanitizeLabelValue(app.Spec.Team),
+		"platform.steward.sh/owner": sanitizeLabelValue(app.Spec.Owner),
+		"platform.steward.sh/tier":  string(app.Spec.Tier),
 	}
 }
 

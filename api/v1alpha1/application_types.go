@@ -1,5 +1,5 @@
 /*
-Copyright 2026 GoPlatform Authors.
+Copyright 2026 Steward Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -252,7 +252,7 @@ type ApplicationSpec struct {
 	//
 	// WHY WE INCLUDE WORKLOAD:
 	//   Unlike Crossplane (infrastructure-only) or ArgoCD (deployment-only),
-	//   GoPlatform manages both infrastructure AND workload.
+	//   Steward manages both infrastructure AND workload.
 	//
 	// This enables:
 	//   1. One CRD = complete application (infra + deployment)
@@ -420,7 +420,7 @@ type WorkloadSpec struct {
 	//   │ Heroku          │ Auto-inject DATABASE_URL into every dyno          │
 	//   │ Railway         │ Auto-inject ${{Postgres.DATABASE_URL}}            │
 	//   │ Render          │ Auto-inject connection strings for linked DBs     │
-	//   │ GoPlatform      │ Auto-inject well-known env vars (this feature)    │
+	//   │ Steward         │ Auto-inject well-known env vars (this feature)    │
 	//   │ Crossplane      │ Manual: user wires Secrets via compositionRef     │
 	//   └─────────────────┴───────────────────────────────────────────────────┘
 	//
@@ -866,7 +866,7 @@ type CostEstimate struct {
 //
 // This is what users actually create:
 //
-//   apiVersion: platform.goplatform.io/v1alpha1
+//   apiVersion: platform.steward.sh/v1alpha1
 //   kind: Application
 //   metadata:
 //     name: payments-api

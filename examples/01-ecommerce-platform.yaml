@@ -32,7 +32,7 @@
 # Core order management. Depends on inventory, payments, and notifications.
 # Production-critical with HA database and scaling.
 
-apiVersion: platform.platform.goplatform.io/v1alpha1
+apiVersion: platform.steward.sh/v1alpha1
 kind: Application
 metadata:
   name: orders-api
@@ -138,7 +138,7 @@ spec:
 # =============================================================================
 # Real-time stock management. High read throughput, eventual consistency OK.
 
-apiVersion: platform.platform.goplatform.io/v1alpha1
+apiVersion: platform.steward.sh/v1alpha1
 kind: Application
 metadata:
   name: inventory-api
@@ -211,7 +211,7 @@ spec:
 # Payment processing. PCI-DSS compliance requirements.
 # Extra security: no cache (sensitive data), encrypted storage.
 
-apiVersion: platform.platform.goplatform.io/v1alpha1
+apiVersion: platform.steward.sh/v1alpha1
 kind: Application
 metadata:
   name: payments-api
@@ -293,7 +293,7 @@ spec:
 # =============================================================================
 # Sends emails, SMS, push notifications. Stateless, queue-driven.
 
-apiVersion: platform.platform.goplatform.io/v1alpha1
+apiVersion: platform.steward.sh/v1alpha1
 kind: Application
 metadata:
   name: notification-svc
@@ -370,7 +370,7 @@ spec:
 # Public-facing gateway. Routes to internal services.
 # High availability, aggressive scaling, caching for static responses.
 
-apiVersion: platform.platform.goplatform.io/v1alpha1
+apiVersion: platform.steward.sh/v1alpha1
 kind: Application
 metadata:
   name: api-gateway

@@ -1,5 +1,5 @@
 /*
-Copyright 2026 GoPlatform Authors.
+Copyright 2026 Steward Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -70,7 +70,7 @@ const (
 	//      (EKS, GKE, AKS, bare-metal, k3s, kind, minikube)
 	//
 	//   2. SIMPLICITY: No Terraform, no cloud credentials, no IAM roles.
-	//      Just deploy operators and GoPlatform creates resources.
+	//      Just deploy operators and Steward creates resources.
 	//
 	//   3. COST: Perfect for dev/staging where managed services are overkill.
 	//      A PostgreSQL pod is free vs $50+/month for RDS.
@@ -410,7 +410,7 @@ type StorageState struct {
 // WHY CONFIG STRUCT (not CRD yet):
 //
 //	For MVP, we use a simple config struct that can be loaded from:
-//	  - Environment variables (GOPLATFORM_PROVIDER=aws)
+//	  - Environment variables (STEWARD_PROVIDER=aws)
 //	  - ConfigMap (mounted as file)
 //	  - Command-line flags
 //
@@ -463,11 +463,11 @@ type AWSConfig struct {
 	DefaultSecurityGroupID string `json:"defaultSecurityGroupId,omitempty"`
 
 	// RolePath is the IAM role path for created roles
-	// Example: /goplatform/
+	// Example: /steward/
 	RolePath string `json:"rolePath,omitempty"`
 
 	// TagPrefix is prepended to all resource tags
-	// Example: goplatform- → goplatform-payments-api
+	// Example: steward- → steward-payments-api
 	TagPrefix string `json:"tagPrefix,omitempty"`
 
 	// SizeMapping maps abstract sizes to AWS instance types
@@ -589,7 +589,7 @@ type LocalConfig struct {
 //	├───────────────────────────────────────────────────────────────────────┤
 //	│                                                                       │
 //	│  ┌─────────────┐     ┌──────────────────────────────────────────────┐ │
-//	│  │ GoPlatform  │────►│            Operator CRDs                     │ │
+//	│  │ Steward     │────►│            Operator CRDs                     │ │
 //	│  │ Controller  │     │  ┌──────────┐ ┌──────────┐ ┌───────────────┐ │ │
 //	│  └─────────────┘     │  │ Cluster  │ │ Redis    │ │RabbitmqCluster│ │ │
 //	│         │            │  │ (CNPG)   │ │ (Bitnami)│ │ (RabbitMQ Op) │ │ │

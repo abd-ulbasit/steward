@@ -2,7 +2,7 @@
 // +build e2e
 
 /*
-Copyright 2026 GoPlatform Authors.
+Copyright 2026 Steward Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,12 +28,12 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/abd-ulbasit/goplatform/test/utils"
+	"github.com/abd-ulbasit/steward/test/utils"
 )
 
 var (
 	// managerImage is the manager image to be built and loaded for testing.
-	managerImage = "example.com/goplatform:v0.0.1"
+	managerImage = "example.com/steward:v0.0.1"
 	// shouldCleanupCertManager tracks whether CertManager was installed by this suite.
 	shouldCleanupCertManager = false
 )
@@ -44,7 +44,7 @@ var (
 // To skip CertManager installation, set: CERT_MANAGER_INSTALL_SKIP=true
 func TestE2E(t *testing.T) {
 	RegisterFailHandler(Fail)
-	_, _ = fmt.Fprintf(GinkgoWriter, "Starting goplatform e2e test suite\n")
+	_, _ = fmt.Fprintf(GinkgoWriter, "Starting steward e2e test suite\n")
 	RunSpecs(t, "e2e suite")
 }
 

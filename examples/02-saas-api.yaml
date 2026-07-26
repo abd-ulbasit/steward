@@ -43,7 +43,7 @@
 # =============================================================================
 # Main API serving all tenant requests. High availability, rate limiting.
 
-apiVersion: platform.platform.goplatform.io/v1alpha1
+apiVersion: platform.steward.sh/v1alpha1
 kind: Application
 metadata:
   name: api-core
@@ -128,7 +128,7 @@ spec:
 # Async processing of outbound webhooks to customer endpoints.
 # Handles retries, circuit breaking, dead letter queue.
 
-apiVersion: platform.platform.goplatform.io/v1alpha1
+apiVersion: platform.steward.sh/v1alpha1
 kind: Application
 metadata:
   name: webhook-processor
@@ -210,7 +210,7 @@ spec:
 # =============================================================================
 # Processes events into data lake (S3). Batch processing, data aggregation.
 
-apiVersion: platform.platform.goplatform.io/v1alpha1
+apiVersion: platform.steward.sh/v1alpha1
 kind: Application
 metadata:
   name: analytics-worker
@@ -285,7 +285,7 @@ spec:
 # Cron-like scheduler for tenant scheduled jobs.
 # Leader election ensures single instance runs jobs.
 
-apiVersion: platform.platform.goplatform.io/v1alpha1
+apiVersion: platform.steward.sh/v1alpha1
 kind: Application
 metadata:
   name: scheduler

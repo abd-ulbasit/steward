@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
-  name: applications.platform.platform.goplatform.io
+  name: applications.platform.steward.sh
 spec:
-  group: platform.platform.goplatform.io
+  group: platform.steward.sh
   names:
     kind: Application
     listKind: ApplicationList
@@ -640,7 +640,7 @@ spec:
                         │ Heroku          │ Auto-inject DATABASE_URL into every dyno          │
                         │ Railway         │ Auto-inject ${{Postgres.DATABASE_URL}}            │
                         │ Render          │ Auto-inject connection strings for linked DBs     │
-                        │ GoPlatform      │ Auto-inject well-known env vars (this feature)    │
+                        │ Steward         │ Auto-inject well-known env vars (this feature)    │
                         │ Crossplane      │ Manual: user wires Secrets via compositionRef     │
                         └─────────────────┴───────────────────────────────────────────────────┘
                     type: boolean

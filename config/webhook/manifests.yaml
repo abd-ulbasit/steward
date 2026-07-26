@@ -10,12 +10,12 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /mutate-platform-platform-goplatform-io-v1alpha1-application
+      path: /mutate-platform-steward-sh-v1alpha1-application
   failurePolicy: Fail
   name: mapplication-v1alpha1.kb.io
   rules:
   - apiGroups:
-    - platform.platform.goplatform.io
+    - platform.steward.sh
     apiVersions:
     - v1alpha1
     operations:
@@ -36,12 +36,12 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-platform-platform-goplatform-io-v1alpha1-application
+      path: /validate-platform-steward-sh-v1alpha1-application
   failurePolicy: Fail
   name: vapplication-v1alpha1.kb.io
   rules:
   - apiGroups:
-    - platform.platform.goplatform.io
+    - platform.steward.sh
     apiVersions:
     - v1alpha1
     operations:

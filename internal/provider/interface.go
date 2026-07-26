@@ -1,5 +1,5 @@
 /*
-Copyright 2026 GoPlatform Authors.
+Copyright 2026 Steward Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ package provider
 import (
 	"context"
 
-	platformv1alpha1 "github.com/abd-ulbasit/goplatform/api/v1alpha1"
+	platformv1alpha1 "github.com/abd-ulbasit/steward/api/v1alpha1"
 )
 
 // =============================================================================

@@ -1,5 +1,5 @@
 /*
-Copyright 2026 GoPlatform Authors.
+Copyright 2026 Steward Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -256,10 +256,10 @@ func (f *Factory) createProvider(config *ProviderConfig) (InfrastructureProvider
 // =============================================================================
 // CONFIGURATION SOURCES (in priority order):
 //
-//  1. GOPLATFORM_PROVIDER env var → Provider type
-//  2. GOPLATFORM_AWS_REGION → AWS region
-//  3. GOPLATFORM_STATE_BUCKET → S3 bucket for Terraform state
-//  4. (Future) ConfigMap mounted at /etc/goplatform/config.yaml
+//  1. STEWARD_PROVIDER env var → Provider type
+//  2. STEWARD_AWS_REGION → AWS region
+//  3. STEWARD_STATE_BUCKET → S3 bucket for Terraform state
+//  4. (Future) ConfigMap mounted at /etc/steward/config.yaml
 //  5. (Future) ProviderConfig CRD
 //
 // WHY ENV VARS FIRST:
@@ -279,10 +279,10 @@ func (f *Factory) loadConfig() (*ProviderConfig, error) {
 	config := &ProviderConfig{}
 
 	// Read provider type
-	providerStr := os.Getenv("GOPLATFORM_PROVIDER")
+	providerStr := os.Getenv("STEWARD_PROVIDER")
 	if providerStr == "" {
 		providerStr = "mock" // Safe default
-		logger.Info("GOPLATFORM_PROVIDER not set, defaulting to mock provider")
+		logger.Info("STEWARD_PROVIDER not set, defaulting to mock provider")
 	}
 
 	switch providerStr {
@@ -297,7 +297,7 @@ func (f *Factory) loadConfig() (*ProviderConfig, error) {
 	case "mock":
 		config.Provider = ProviderMock
 	default:
-		return nil, fmt.Errorf("invalid GOPLATFORM_PROVIDER: %s", providerStr)
+		return nil, fmt.Errorf("invalid STEWARD_PROVIDER: %s", providerStr)
 	}
 
 	// Load provider-specific config
@@ -330,7 +330,7 @@ func (f *Factory) loadConfig() (*ProviderConfig, error) {
 
 // loadAWSConfig loads AWS-specific configuration from environment.
 func loadAWSConfig() (*AWSConfig, error) {
-	region := os.Getenv("GOPLATFORM_AWS_REGION")
+	region := os.Getenv("STEWARD_AWS_REGION")
 	if region == "" {
 		region = os.Getenv("AWS_REGION")
 	}
@@ -343,27 +343,27 @@ func loadAWSConfig() (*AWSConfig, error) {
 	}
 
 	// State backend config
-	stateBucket := os.Getenv("GOPLATFORM_STATE_BUCKET")
+	stateBucket := os.Getenv("STEWARD_STATE_BUCKET")
 	if stateBucket != "" {
 		config.StateBackend = &S3BackendConfig{
 			Bucket:        stateBucket,
-			Region:        os.Getenv("GOPLATFORM_STATE_REGION"),
-			DynamoDBTable: os.Getenv("GOPLATFORM_LOCK_TABLE"),
-			KeyPrefix:     os.Getenv("GOPLATFORM_STATE_PREFIX"),
+			Region:        os.Getenv("STEWARD_STATE_REGION"),
+			DynamoDBTable: os.Getenv("STEWARD_LOCK_TABLE"),
+			KeyPrefix:     os.Getenv("STEWARD_STATE_PREFIX"),
 			Encrypt:       true,
 		}
 		if config.StateBackend.Region == "" {
 			config.StateBackend.Region = region
 		}
 		if config.StateBackend.DynamoDBTable == "" {
-			config.StateBackend.DynamoDBTable = "goplatform-locks"
+			config.StateBackend.DynamoDBTable = "steward-locks"
 		}
 	}
 
 	// Networking defaults
-	config.DefaultVPCID = os.Getenv("GOPLATFORM_VPC_ID")
+	config.DefaultVPCID = os.Getenv("STEWARD_VPC_ID")
 	// Subnets can be comma-separated
-	subnetEnv := os.Getenv("GOPLATFORM_SUBNET_IDS")
+	subnetEnv := os.Getenv("STEWARD_SUBNET_IDS")
 	if subnetEnv != "" {
 		// Simple split - production would use proper parsing
 		config.DefaultSubnetIDs = splitAndTrim(subnetEnv)
@@ -377,15 +377,15 @@ func loadAWSConfig() (*AWSConfig, error) {
 
 // loadGCPConfig loads GCP-specific configuration from environment.
 func loadGCPConfig() (*GCPConfig, error) {
-	project := os.Getenv("GOPLATFORM_GCP_PROJECT")
+	project := os.Getenv("STEWARD_GCP_PROJECT")
 	if project == "" {
 		project = os.Getenv("GOOGLE_PROJECT")
 	}
 	if project == "" {
-		return nil, fmt.Errorf("GOPLATFORM_GCP_PROJECT or GOOGLE_PROJECT must be set")
+		return nil, fmt.Errorf("STEWARD_GCP_PROJECT or GOOGLE_PROJECT must be set")
 	}
 
-	region := os.Getenv("GOPLATFORM_GCP_REGION")
+	region := os.Getenv("STEWARD_GCP_REGION")
 	if region == "" {
 		region = "us-central1"
 	}
@@ -393,16 +393,16 @@ func loadGCPConfig() (*GCPConfig, error) {
 	config := &GCPConfig{
 		Project: project,
 		Region:  region,
-		Zone:    os.Getenv("GOPLATFORM_GCP_ZONE"),
-		Network: os.Getenv("GOPLATFORM_GCP_NETWORK"),
+		Zone:    os.Getenv("STEWARD_GCP_ZONE"),
+		Network: os.Getenv("STEWARD_GCP_NETWORK"),
 	}
 
 	// State backend config
-	stateBucket := os.Getenv("GOPLATFORM_GCS_STATE_BUCKET")
+	stateBucket := os.Getenv("STEWARD_GCS_STATE_BUCKET")
 	if stateBucket != "" {
 		config.StateBackend = &GCSBackendConfig{
 			Bucket: stateBucket,
-			Prefix: os.Getenv("GOPLATFORM_GCS_STATE_PREFIX"),
+			Prefix: os.Getenv("STEWARD_GCS_STATE_PREFIX"),
 		}
 	}
 

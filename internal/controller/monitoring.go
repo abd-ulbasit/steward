@@ -1,5 +1,5 @@
 /*
-Copyright 2026 GoPlatform Authors.
+Copyright 2026 Steward Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -82,7 +82,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	platformv1alpha1 "github.com/abd-ulbasit/goplatform/api/v1alpha1"
+	platformv1alpha1 "github.com/abd-ulbasit/steward/api/v1alpha1"
 )
 
 // =============================================================================
@@ -282,7 +282,7 @@ func buildServiceMonitor(app *platformv1alpha1.Application) *monitoringv1.Servic
 			Selector: metav1.LabelSelector{
 				MatchLabels: map[string]string{
 					"app.kubernetes.io/name":       app.Name,
-					"app.kubernetes.io/managed-by": "goplatform",
+					"app.kubernetes.io/managed-by": "steward",
 				},
 			},
 			Endpoints: []monitoringv1.Endpoint{
@@ -549,10 +549,10 @@ func (r *ApplicationReconciler) cleanupMonitoringResources(ctx context.Context, 
 func monitoringLabels(app *platformv1alpha1.Application) map[string]string {
 	return map[string]string{
 		"app.kubernetes.io/name":       app.Name,
-		"app.kubernetes.io/managed-by": "goplatform",
-		"app.kubernetes.io/part-of":    "goplatform",
-		"platform.goplatform.io/team":  sanitizeMonitoringLabel(app.Spec.Team),
-		"platform.goplatform.io/tier":  string(app.Spec.Tier),
+		"app.kubernetes.io/managed-by": "steward",
+		"app.kubernetes.io/part-of":    "steward",
+		"platform.steward.sh/team":     sanitizeMonitoringLabel(app.Spec.Team),
+		"platform.steward.sh/tier":     string(app.Spec.Tier),
 	}
 }
 

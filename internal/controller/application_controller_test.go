@@ -1,5 +1,5 @@
 /*
-Copyright 2026 GoPlatform Authors.
+Copyright 2026 Steward Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -92,7 +92,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	platformv1alpha1 "github.com/abd-ulbasit/goplatform/api/v1alpha1"
+	platformv1alpha1 "github.com/abd-ulbasit/steward/api/v1alpha1"
 )
 
 // =============================================================================
@@ -305,8 +305,8 @@ var _ = Describe("Application Controller", func() {
 
 			// Verify labels
 			Expect(deployment.Labels).To(HaveKeyWithValue("app.kubernetes.io/name", resourceName))
-			Expect(deployment.Labels).To(HaveKeyWithValue("platform.goplatform.io/team", "platform"))
-			Expect(deployment.Labels).To(HaveKeyWithValue("app.kubernetes.io/managed-by", "goplatform"))
+			Expect(deployment.Labels).To(HaveKeyWithValue("platform.steward.sh/team", "platform"))
+			Expect(deployment.Labels).To(HaveKeyWithValue("app.kubernetes.io/managed-by", "steward"))
 
 			// Verify owner reference
 			Expect(deployment.OwnerReferences).To(HaveLen(1))

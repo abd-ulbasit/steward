@@ -1,5 +1,5 @@
 /*
-Copyright 2026 GoPlatform Authors.
+Copyright 2026 Steward Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ limitations under the License.
 //   - Counter: Monotonically increasing value (error count)
 //
 // NAMING CONVENTIONS (Prometheus best practices):
-//   - Prefix with subsystem: goplatform_controller_*
+//   - Prefix with subsystem: steward_controller_*
 //   - Use _total suffix for counters
 //   - Use _seconds suffix for durations
 //   - Use snake_case
@@ -54,7 +54,7 @@ var (
 	// Labels allow filtering by app name, namespace, and result (success/error/requeue).
 	reconcileDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Namespace: "goplatform",
+			Namespace: "steward",
 			Subsystem: "controller",
 			Name:      "reconcile_duration_seconds",
 			Help:      "Duration of Application reconciliation in seconds.",
@@ -68,7 +68,7 @@ var (
 	// Value is 1 for the current phase, deleted when app is removed.
 	applicationPhaseGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Namespace: "goplatform",
+			Namespace: "steward",
 			Subsystem: "application",
 			Name:      "phase_info",
 			Help:      "Current phase of an Application (1 = current phase).",
@@ -80,7 +80,7 @@ var (
 	// A spike in errors indicates something is broken.
 	reconcileErrorsTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Namespace: "goplatform",
+			Namespace: "steward",
 			Subsystem: "controller",
 			Name:      "reconcile_errors_total",
 			Help:      "Total number of reconciliation errors.",
@@ -92,7 +92,7 @@ var (
 	// Useful for capacity planning and understanding controller load.
 	managedResourcesGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Namespace: "goplatform",
+			Namespace: "steward",
 			Subsystem: "controller",
 			Name:      "managed_resources",
 			Help:      "Number of child resources managed by the controller.",
@@ -103,7 +103,7 @@ var (
 	// applicationTotal tracks the total number of Application resources by tier.
 	applicationTotal = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Namespace: "goplatform",
+			Namespace: "steward",
 			Subsystem: "application",
 			Name:      "total",
 			Help:      "Total number of Application resources by tier.",

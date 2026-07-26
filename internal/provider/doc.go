@@ -1,5 +1,5 @@
 /*
-Copyright 2026 GoPlatform Authors.
+Copyright 2026 Steward Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,11 +15,11 @@ limitations under the License.
 */
 
 // Package provider defines the abstraction layer for cloud infrastructure
-// provisioning in GoPlatform.
+// provisioning in Steward.
 //
 // # Why This Package Exists
 //
-// GoPlatform aims to be cloud-agnostic. Users specify what they need
+// Steward aims to be cloud-agnostic. Users specify what they need
 // (database: postgres, size: medium) without knowing AWS RDS vs GCP Cloud SQL.
 // This package provides the interface that different cloud providers implement.
 //

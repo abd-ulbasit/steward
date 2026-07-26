@@ -1,5 +1,5 @@
 /*
-Copyright 2026 GoPlatform Authors.
+Copyright 2026 Steward Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -37,10 +37,10 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	platformv1alpha1 "github.com/abd-ulbasit/goplatform/api/v1alpha1"
-	"github.com/abd-ulbasit/goplatform/internal/controller"
-	"github.com/abd-ulbasit/goplatform/internal/provider"
-	webhookv1alpha1 "github.com/abd-ulbasit/goplatform/internal/webhook/v1alpha1"
+	platformv1alpha1 "github.com/abd-ulbasit/steward/api/v1alpha1"
+	"github.com/abd-ulbasit/steward/internal/controller"
+	"github.com/abd-ulbasit/steward/internal/provider"
+	webhookv1alpha1 "github.com/abd-ulbasit/steward/internal/webhook/v1alpha1"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -165,7 +165,7 @@ func main() {
 		WebhookServer:          webhookServer,
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "98ee1d4e.platform.goplatform.io",
+		LeaderElectionID:       "98ee1d4e.steward.sh",
 		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
 		// when the Manager ends. This requires the binary to immediately end when the
 		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly

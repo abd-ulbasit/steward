@@ -14,7 +14,7 @@
 # Just team, owner, and image. Platform uses all defaults.
 # No database, no cache, no scaling - just a stateless container.
 
-apiVersion: platform.platform.goplatform.io/v1alpha1
+apiVersion: platform.steward.sh/v1alpha1
 kind: Application
 metadata:
   name: hello-world
@@ -33,7 +33,7 @@ spec:
 # Simple REST API with proper health checks and metrics.
 # No database - good for BFF (backend-for-frontend) or proxy services.
 
-apiVersion: platform.platform.goplatform.io/v1alpha1
+apiVersion: platform.steward.sh/v1alpha1
 kind: Application
 metadata:
   name: simple-api
@@ -74,7 +74,7 @@ spec:
 # =============================================================================
 # Basic web app with PostgreSQL. Good starting point for most services.
 
-apiVersion: platform.platform.goplatform.io/v1alpha1
+apiVersion: platform.steward.sh/v1alpha1
 kind: Application
 metadata:
   name: todo-app
@@ -113,7 +113,7 @@ spec:
 # =============================================================================
 # Service with Redis cache for read-heavy workloads (product catalog, etc.)
 
-apiVersion: platform.platform.goplatform.io/v1alpha1
+apiVersion: platform.steward.sh/v1alpha1
 kind: Application
 metadata:
   name: product-catalog
@@ -150,7 +150,7 @@ spec:
 # Background worker that processes messages from a queue.
 # No HTTP ports - just consumes from SQS.
 
-apiVersion: platform.platform.goplatform.io/v1alpha1
+apiVersion: platform.steward.sh/v1alpha1
 kind: Application
 metadata:
   name: email-worker

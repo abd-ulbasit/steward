@@ -83,7 +83,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - platform.platform.goplatform.io
+  - platform.steward.sh
   resources:
   - applications
   verbs:
@@ -95,13 +95,13 @@ rules:
   - update
   - watch
 - apiGroups:
-  - platform.platform.goplatform.io
+  - platform.steward.sh
   resources:
   - applications/finalizers
   verbs:
   - update
 - apiGroups:
-  - platform.platform.goplatform.io
+  - platform.steward.sh
   resources:
   - applications/status
   verbs:

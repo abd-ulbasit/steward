@@ -1,4 +1,4 @@
-module github.com/abd-ulbasit/goplatform
+module github.com/abd-ulbasit/steward
 
 go 1.25.3
 

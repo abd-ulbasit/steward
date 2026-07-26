@@ -1,5 +1,5 @@
 /*
-Copyright 2026 GoPlatform Authors.
+Copyright 2026 Steward Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -87,7 +87,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	platformv1alpha1 "github.com/abd-ulbasit/goplatform/api/v1alpha1"
+	platformv1alpha1 "github.com/abd-ulbasit/steward/api/v1alpha1"
 )
 
 // applicationlog is the logger for this webhook package.
@@ -130,7 +130,7 @@ func SetupApplicationWebhookWithManager(mgr ctrl.Manager) error {
 //
 // =============================================================================
 
-// +kubebuilder:webhook:path=/mutate-platform-platform-goplatform-io-v1alpha1-application,mutating=true,failurePolicy=fail,sideEffects=None,groups=platform.platform.goplatform.io,resources=applications,verbs=create;update,versions=v1alpha1,name=mapplication-v1alpha1.kb.io,admissionReviewVersions=v1
+// +kubebuilder:webhook:path=/mutate-platform-steward-sh-v1alpha1-application,mutating=true,failurePolicy=fail,sideEffects=None,groups=platform.steward.sh,resources=applications,verbs=create;update,versions=v1alpha1,name=mapplication-v1alpha1.kb.io,admissionReviewVersions=v1
 
 // ApplicationCustomDefaulter is responsible for setting default values on the Application
 // resource when it is created or updated.
@@ -181,17 +181,17 @@ func (d *ApplicationCustomDefaulter) Default(_ context.Context, obj *platformv1a
 	}
 
 	// app.kubernetes.io/managed-by tells other tools (Helm, ArgoCD, etc.) that
-	// GoPlatform manages this resource. We don't overwrite if already set — this
+	// Steward manages this resource. We don't overwrite if already set — this
 	// respects cases where a higher-level tool (e.g., Flux) creates the Application.
 	if _, exists := obj.Labels["app.kubernetes.io/managed-by"]; !exists {
-		obj.Labels["app.kubernetes.io/managed-by"] = "goplatform"
+		obj.Labels["app.kubernetes.io/managed-by"] = "steward"
 	}
 
-	// platform.goplatform.io/team enables filtering and grouping by team:
-	//   kubectl get applications -l platform.goplatform.io/team=payments
+	// platform.steward.sh/team enables filtering and grouping by team:
+	//   kubectl get applications -l platform.steward.sh/team=payments
 	// Always sync from spec.team to ensure consistency.
 	if obj.Spec.Team != "" {
-		obj.Labels["platform.goplatform.io/team"] = obj.Spec.Team
+		obj.Labels["platform.steward.sh/team"] = obj.Spec.Team
 	}
 
 	// -------------------------------------------------------------------------
@@ -277,7 +277,7 @@ func (d *ApplicationCustomDefaulter) Default(_ context.Context, obj *platformv1a
 //
 // =============================================================================
 
-// +kubebuilder:webhook:path=/validate-platform-platform-goplatform-io-v1alpha1-application,mutating=false,failurePolicy=fail,sideEffects=None,groups=platform.platform.goplatform.io,resources=applications,verbs=create;update,versions=v1alpha1,name=vapplication-v1alpha1.kb.io,admissionReviewVersions=v1
+// +kubebuilder:webhook:path=/validate-platform-steward-sh-v1alpha1-application,mutating=false,failurePolicy=fail,sideEffects=None,groups=platform.steward.sh,resources=applications,verbs=create;update,versions=v1alpha1,name=vapplication-v1alpha1.kb.io,admissionReviewVersions=v1
 
 // ApplicationCustomValidator is responsible for validating the Application resource
 // when it is created, updated, or deleted.

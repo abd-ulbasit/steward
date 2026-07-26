@@ -1,5 +1,5 @@
 /*
-Copyright 2026 GoPlatform Authors.
+Copyright 2026 Steward Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
 
-	platformv1alpha1 "github.com/abd-ulbasit/goplatform/api/v1alpha1"
+	platformv1alpha1 "github.com/abd-ulbasit/steward/api/v1alpha1"
 )
 
 // =============================================================================
@@ -167,15 +167,15 @@ var _ = Describe("buildServiceMonitor", func() {
 	It("includes standard labels", func() {
 		sm := buildServiceMonitor(app)
 		Expect(sm.Labels).To(HaveKeyWithValue("app.kubernetes.io/name", "my-app"))
-		Expect(sm.Labels).To(HaveKeyWithValue("app.kubernetes.io/managed-by", "goplatform"))
-		Expect(sm.Labels).To(HaveKeyWithValue("platform.goplatform.io/team", "payments"))
-		Expect(sm.Labels).To(HaveKeyWithValue("platform.goplatform.io/tier", "critical"))
+		Expect(sm.Labels).To(HaveKeyWithValue("app.kubernetes.io/managed-by", "steward"))
+		Expect(sm.Labels).To(HaveKeyWithValue("platform.steward.sh/team", "payments"))
+		Expect(sm.Labels).To(HaveKeyWithValue("platform.steward.sh/tier", "critical"))
 	})
 
 	It("selects the application service by label", func() {
 		sm := buildServiceMonitor(app)
 		Expect(sm.Spec.Selector.MatchLabels).To(HaveKeyWithValue("app.kubernetes.io/name", "my-app"))
-		Expect(sm.Spec.Selector.MatchLabels).To(HaveKeyWithValue("app.kubernetes.io/managed-by", "goplatform"))
+		Expect(sm.Spec.Selector.MatchLabels).To(HaveKeyWithValue("app.kubernetes.io/managed-by", "steward"))
 	})
 
 	It("uses default metrics path /metrics", func() {
@@ -254,7 +254,7 @@ var _ = Describe("buildPrometheusRule", func() {
 	It("includes standard labels", func() {
 		pr := buildPrometheusRule(app)
 		Expect(pr.Labels).To(HaveKeyWithValue("app.kubernetes.io/name", "my-app"))
-		Expect(pr.Labels).To(HaveKeyWithValue("platform.goplatform.io/team", "payments"))
+		Expect(pr.Labels).To(HaveKeyWithValue("platform.steward.sh/team", "payments"))
 	})
 
 	It("has SLA and health rule groups", func() {
@@ -563,10 +563,10 @@ var _ = Describe("monitoringLabels", func() {
 		}
 		labels := monitoringLabels(app)
 		Expect(labels).To(HaveKeyWithValue("app.kubernetes.io/name", "test"))
-		Expect(labels).To(HaveKeyWithValue("app.kubernetes.io/managed-by", "goplatform"))
-		Expect(labels).To(HaveKeyWithValue("app.kubernetes.io/part-of", "goplatform"))
-		Expect(labels).To(HaveKeyWithValue("platform.goplatform.io/team", "backend"))
-		Expect(labels).To(HaveKeyWithValue("platform.goplatform.io/tier", "critical"))
+		Expect(labels).To(HaveKeyWithValue("app.kubernetes.io/managed-by", "steward"))
+		Expect(labels).To(HaveKeyWithValue("app.kubernetes.io/part-of", "steward"))
+		Expect(labels).To(HaveKeyWithValue("platform.steward.sh/team", "backend"))
+		Expect(labels).To(HaveKeyWithValue("platform.steward.sh/tier", "critical"))
 	})
 })
 

@@ -153,6 +153,7 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -164,6 +165,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
@@ -1142,6 +1144,13 @@ func (r *ApplicationReconciler) reconcileDeployment(ctx context.Context, app *pl
 	var oldReplicas *int32
 	var oldImage string
 
+	// spec.replicas has two candidate writers: this operator (from
+	// spec.workload.replicas) and an autoscaler (through the scale subresource).
+	// Only one may own it. Whenever an HPA targets this Deployment, the HPA wins
+	// and we must not write the field at all. See hpaOwnsReplicas for why
+	// "don't write" beats "write the same value".
+	hpaOwnsReplicas := r.hpaOwnsReplicas(ctx, app)
+
 	opResult, err := controllerutil.CreateOrUpdate(ctx, r.Client, deployment, func() error {
 		// This function mutates 'deployment' to match desired state
 		// It's called after Get (if exists) or with empty object (if new)
@@ -1154,6 +1163,16 @@ func (r *ApplicationReconciler) reconcileDeployment(ctx context.Context, app *pl
 		// Copy spec from desired
 		deployment.Spec = desired.Spec
 		deployment.Labels = desired.Labels
+
+		// Hand spec.replicas back to the autoscaler. oldReplicas is nil only on
+		// the create path (CreateOrUpdate leaves the object untouched when the Get
+		// 404s), which is the one pass where we do seed a starting count; on every
+		// later pass we re-apply exactly what is already stored, so the field
+		// round-trips unchanged and CreateOrUpdate reports "None" instead of
+		// issuing a write that would bounce back off the HPA.
+		if hpaOwnsReplicas && oldReplicas != nil {
+			deployment.Spec.Replicas = oldReplicas
+		}
 
 		// Set owner reference (needed inside mutate for create case)
 		return controllerutil.SetControllerReference(app, deployment, r.Scheme)
@@ -1186,7 +1205,12 @@ func (r *ApplicationReconciler) reconcileDeployment(ctx context.Context, app *pl
 	case controllerutil.OperationResultCreated:
 		drifted, detail = true, "recreated"
 	case controllerutil.OperationResultUpdated:
-		if oldReplicas != nil {
+		// Replica count is only ours to police when no autoscaler owns it.
+		// Otherwise every scale-up would be reported as an external edit, and the
+		// DriftDetected condition would sit at True for the entire life of a
+		// healthy autoscaled app: exactly the alert fatigue the condition exists
+		// to avoid.
+		if !hpaOwnsReplicas && oldReplicas != nil {
 			desiredReplicas := int32(1)
 			if desired.Spec.Replicas != nil {
 				desiredReplicas = *desired.Spec.Replicas
@@ -1209,13 +1233,100 @@ func (r *ApplicationReconciler) reconcileDeployment(ctx context.Context, app *pl
 	return r.isDeploymentReady(deployment), nil
 }
 
+// =============================================================================
+// WHO OWNS spec.replicas
+// =============================================================================
+//
+// hpaOwnsReplicas reports whether a HorizontalPodAutoscaler is the authority on
+// the replica count of the Deployment we manage for this Application.
+//
+// WHY THIS IS A LOOKUP AND NOT JUST `app.Spec.Scaling != nil`:
+// Our own HPA is not the only autoscaler that can target our Deployment. KEDA
+// materializes a ScaledObject as a plain HPA pointing at the workload, and
+// operators frequently sit next to a hand-written HPA. Any of them owns the
+// field just as much as ours does, and fighting a third-party autoscaler
+// produces the same flap. So the question we answer is "is anything autoscaling
+// this Deployment", not "did the user fill in our scaling block".
+//
+// WHY spec.Scaling STILL SHORT-CIRCUITS TO TRUE:
+// On the pass that follows an out-of-band deletion of our HPA, the List below
+// finds nothing, but reconcileHPA recreates the HPA later in the very same pass.
+// Writing our own replica count in that window would hand the recreated HPA
+// something to immediately undo.
+//
+// WHY WE EXCLUDE OUR OWN HPA WHEN spec.Scaling IS nil:
+// That is the "user removed the scaling block" pass. reconcileHPA deletes the
+// HPA further down, so ownership of spec.replicas is already returning to us and
+// we should apply spec.workload.replicas now rather than a pass later.
+//
+// A List failure is not fatal: fall back to the declared intent, which is what
+// the operator can still reason about without the cluster's help.
+func (r *ApplicationReconciler) hpaOwnsReplicas(ctx context.Context, app *platformv1alpha1.Application) bool {
+	if app.Spec.Scaling != nil {
+		return true
+	}
+
+	var hpas autoscalingv2.HorizontalPodAutoscalerList
+	if err := r.List(ctx, &hpas, client.InNamespace(app.Namespace)); err != nil {
+		log.FromContext(ctx).V(1).Info("could not list HPAs; assuming no autoscaler owns replicas",
+			"error", err.Error())
+		return false
+	}
+
+	for i := range hpas.Items {
+		hpa := &hpas.Items[i]
+		// Our own HPA is on its way out in this exact pass, so ignore it.
+		if hpa.Name == app.Name && metav1.IsControlledBy(hpa, app) {
+			continue
+		}
+		if hpaTargetsDeployment(hpa, app.Name) {
+			return true
+		}
+	}
+	return false
+}
+
+// initialReplicas is the replica count the Deployment is born with. Once an HPA
+// exists this value is never written again (see reconcileDeployment), so it only
+// has to be a sane starting point: spec.workload.replicas, clamped into the
+// autoscaling range when a scaling block is present. Without the clamp an app
+// declaring `replicas: 1, scaling.minReplicas: 3` would start one pod and wait
+// for the HPA's first sync to reach its own declared floor, and one declaring
+// more replicas than maxReplicas would start over the ceiling and be scaled down.
+func initialReplicas(app *platformv1alpha1.Application) int32 {
+	replicas := int32(1)
+	if app.Spec.Workload != nil && app.Spec.Workload.Replicas != nil {
+		replicas = *app.Spec.Workload.Replicas
+	}
+
+	if app.Spec.Scaling == nil {
+		return replicas
+	}
+	if floor := app.Spec.Scaling.MinReplicas; floor != nil && replicas < *floor {
+		replicas = *floor
+	}
+	if ceiling := app.Spec.Scaling.MaxReplicas; ceiling > 0 && replicas > ceiling {
+		replicas = ceiling
+	}
+	return replicas
+}
+
+// hpaTargetsDeployment reports whether an HPA's scaleTargetRef points at the
+// named apps/v1 Deployment. The apiVersion check tolerates an empty value:
+// scaleTargetRef.apiVersion is optional and a bare {kind: Deployment} resolves
+// to apps/v1 in practice.
+func hpaTargetsDeployment(hpa *autoscalingv2.HorizontalPodAutoscaler, name string) bool {
+	ref := hpa.Spec.ScaleTargetRef
+	if ref.Kind != "Deployment" || ref.Name != name {
+		return false
+	}
+	return ref.APIVersion == "" || strings.HasPrefix(ref.APIVersion, "apps/")
+}
+
 // buildDeployment creates a Deployment from the Application spec.
 func (r *ApplicationReconciler) buildDeployment(app *platformv1alpha1.Application) *appsv1.Deployment {
 	labels := r.buildLabels(app)
-	replicas := int32(1)
-	if app.Spec.Workload.Replicas != nil {
-		replicas = *app.Spec.Workload.Replicas
-	}
+	replicas := initialReplicas(app)
 
 	// Build container ports
 	containerPorts := make([]corev1.ContainerPort, 0, len(app.Spec.Workload.Ports))
@@ -2516,6 +2627,53 @@ func (r *ApplicationReconciler) ensureInfrastructureStatus(app *platformv1alpha1
 //
 // =============================================================================
 
+// ignoreScaleOnlyUpdates drops owned-Deployment update events whose only
+// difference is spec.replicas.
+//
+// An autoscaler writes that field through the scale subresource, which bumps
+// metadata.generation, so GenerationChangedPredicate does NOT filter it: every
+// scale decision would wake this Application up for a reconcile that has nothing
+// to do. The predicate is deliberately narrow, the replica count must be the
+// single difference with status byte-identical, because status is how the
+// Deployment tells us about readiness, and swallowing those events would leave
+// the Application's Ready condition stale until the next periodic resync. During
+// a real scale-up that means the scale write itself is filtered while the
+// rollout's status updates still flow through.
+func ignoreScaleOnlyUpdates() predicate.Predicate {
+	return predicate.Funcs{
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			oldDeploy, okOld := e.ObjectOld.(*appsv1.Deployment)
+			newDeploy, okNew := e.ObjectNew.(*appsv1.Deployment)
+			if !okOld || !okNew {
+				// Not a Deployment: never filter what we cannot inspect.
+				return true
+			}
+			return !isScaleOnlyUpdate(oldDeploy, newDeploy)
+		},
+	}
+}
+
+// isScaleOnlyUpdate reports whether the only meaningful change between two
+// revisions of a Deployment is its replica count. Server-side bookkeeping that
+// every write touches (resourceVersion, generation, managedFields) is normalised
+// away first; everything else, status included, must match exactly.
+func isScaleOnlyUpdate(oldDeploy, newDeploy *appsv1.Deployment) bool {
+	if equality.Semantic.DeepEqual(oldDeploy.Spec.Replicas, newDeploy.Spec.Replicas) {
+		return false // replicas did not move, so this is not a scale write
+	}
+
+	normalized := make([]*appsv1.Deployment, 0, 2)
+	for _, d := range []*appsv1.Deployment{oldDeploy, newDeploy} {
+		c := d.DeepCopy()
+		c.Spec.Replicas = nil
+		c.ResourceVersion = ""
+		c.Generation = 0
+		c.ManagedFields = nil
+		normalized = append(normalized, c)
+	}
+	return equality.Semantic.DeepEqual(normalized[0], normalized[1])
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *ApplicationReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	b := ctrl.NewControllerManagedBy(mgr).
@@ -2525,7 +2683,7 @@ func (r *ApplicationReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		// Secondary watches: resources we own
 		// When these change, find the owner Application and reconcile it
-		Owns(&appsv1.Deployment{}).
+		Owns(&appsv1.Deployment{}, builder.WithPredicates(ignoreScaleOnlyUpdates())).
 		Owns(&corev1.Service{}).
 		Owns(&corev1.ConfigMap{}).
 		Owns(&corev1.Secret{}).

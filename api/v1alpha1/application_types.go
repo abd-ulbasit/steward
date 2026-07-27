@@ -353,7 +353,10 @@ type WorkloadSpec struct {
 	Image string `json:"image"`
 
 	// Replicas is the desired number of pod replicas.
-	// This is the initial count; HPA may scale up/down.
+	// When spec.scaling is set (or any other autoscaler targets the Deployment)
+	// this is only the count the Deployment is created with, clamped into the
+	// autoscaling range: the autoscaler owns the replica count from then on and
+	// editing this field no longer moves it.
 	// +kubebuilder:default=1
 	// +kubebuilder:validation:Minimum=0
 	// +optional

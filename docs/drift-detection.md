@@ -56,7 +56,7 @@ drift  ==  resource was recreated (it was missing)
        OR  a MEANINGFUL managed field actually changed
 ```
 
-- **Deployment** — compares `replicas` and the primary container image (field-level: `replicas 5->3`).
+- **Deployment** — compares `replicas` (only when no autoscaler owns that field, see below) and the primary container image (field-level: `replicas 5->3`).
 - **Service** — compares the set of exposed port numbers.
 - **ConfigMap / Secret / HPA / PDB** — flag only *recreation* (deletion recovery); their `Updated` is dominated by server defaulting, so we don't flag it. Correction still happens regardless — we just don't raise a false drift alarm.
 
@@ -74,6 +74,36 @@ specUnchanged := app.Generation == app.Status.ObservedGeneration
 trails `Generation` by exactly one spec edit. When they're equal, the desired
 state is one we've already reconciled — so any meaningful child change came from
 outside. Drift is reported only when `specUnchanged` holds.
+
+### The other discriminator: who owns the field
+
+A field is only ours to correct if nothing else owns it. `spec.replicas` is the
+case where that matters: the moment a HorizontalPodAutoscaler targets our
+Deployment, the HPA writes that field through the scale subresource and the
+operator must stop writing it entirely. Writing "the desired value" is not a
+harmless no-op here, it is one half of a fight:
+
+```
+HPA scales 1 -> 3  ->  Deployment watch fires  ->  Application re-enqueued
+  ->  operator writes replicas back to 1  ->  HPA scales 1 -> 3  ->  ...
+```
+
+and every lap reports the autoscaler's own decision as external drift
+(`DriftCorrected ... Deployment (replicas 3->1)`), which is precisely the false
+positive the rest of this page is about.
+
+So `reconcileDeployment` asks whether an HPA targets the Deployment (ours, or a
+third party's: KEDA materializes a `ScaledObject` as a plain HPA) and, if one
+does, re-applies the stored replica count instead of the spec's. The count is
+seeded once at create time, clamped into `[minReplicas, maxReplicas]`, and never
+written again. Everything else about the Deployment stays enforced: tamper with
+the image of an autoscaled app and it is still corrected and still reported.
+
+The owned-Deployment watch carries a matching predicate: an update whose *only*
+difference is `spec.replicas` is dropped. A scale write bumps
+`metadata.generation`, so `GenerationChangedPredicate` would not have filtered
+it. The predicate deliberately stops there and lets status updates through,
+because status is how the Deployment reports readiness.
 
 ## What you observe
 
@@ -113,3 +143,7 @@ kubectl describe application <app>              # see DriftDetected + DriftCorre
 kubectl delete service <app>                    # delete a child
 kubectl get service <app> -w                    # watch it get recreated
 ```
+
+On an Application with a `scaling` block, the first command is *not* drift:
+the replica count stays where you put it (the HPA owns it and will move it back
+within its own sync period), and no `DriftCorrected` event is emitted.

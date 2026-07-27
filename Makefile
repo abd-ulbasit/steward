@@ -63,10 +63,14 @@ test: manifests generate fmt vet setup-envtest ## Run tests.
 
 # The e2e setup assumes Kind is pre-installed and builds/loads the Manager image locally.
 # Targeting a different vendor means changing the setup under 'test/e2e'.
-# CertManager is installed by default; skip with:
+# CertManager is installed by the suite itself (test/e2e/e2e_suite_test.go); skip with:
 # - CERT_MANAGER_INSTALL_SKIP=true
 KIND_CLUSTER ?= steward-test-e2e
 
+# The suite runs 'make deploy', which applies config/default — and that includes
+# the prometheus overlay's ServiceMonitor. Without the Prometheus Operator CRDs
+# kubectl cannot map that kind, so the whole deploy exits non-zero and every spec
+# fails or is skipped. Install them here, the same way dev-setup does.
 .PHONY: setup-test-e2e
 setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
 	@command -v $(KIND) >/dev/null 2>&1 || { \
@@ -80,6 +84,8 @@ setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
 			echo "Creating Kind cluster '$(KIND_CLUSTER)'..."; \
 			$(KIND) create cluster --name $(KIND_CLUSTER) ;; \
 	esac
+	@"$(KUBECTL)" config use-context kind-$(KIND_CLUSTER)
+	$(MAKE) install-prometheus-crds
 
 .PHONY: test-e2e
 test-e2e: setup-test-e2e manifests generate fmt vet ## Run the e2e tests. Expected an isolated environment using Kind.

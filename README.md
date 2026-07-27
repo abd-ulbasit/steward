@@ -255,6 +255,21 @@ make generate       # regenerate DeepCopy methods
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## How this was built
+
+About half the commits here carry a `Co-authored-by: Claude` trailer — run
+`git log --grep='^Co-authored-by: Claude' -i --oneline | wc -l` against
+`git log --oneline | wc -l` for the current ratio. I build with coding agents and
+review, run, and integrate what comes back; the CRD schema, the provider
+abstraction, and the generated-resource plumbing are largely that. The parts that
+decided the shape of this operator were not generated: the drift discriminator at
+the top of this README came from watching `CreateOrUpdate` report `Updated` for
+two situations that mean opposite things and working out that `observedGeneration`
+is the only thing that separates them, and the coverage table above still prints
+the 3.5% and the 0.0% with an explanation rather than a chart that flatters them.
+To judge the engineering rather than the tooling, read that section and
+[docs/DESIGN-DECISIONS.md](docs/DESIGN-DECISIONS.md).
+
 ## Documentation
 
 - [docs/DESIGN-DECISIONS.md](docs/DESIGN-DECISIONS.md) — CRD schema rationale,

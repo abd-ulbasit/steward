@@ -1167,9 +1167,17 @@ func (r *ApplicationReconciler) reconcileDeployment(ctx context.Context, app *pl
 		// Hand spec.replicas back to the autoscaler. oldReplicas is nil only on
 		// the create path (CreateOrUpdate leaves the object untouched when the Get
 		// 404s), which is the one pass where we do seed a starting count; on every
-		// later pass we re-apply exactly what is already stored, so the field
-		// round-trips unchanged and CreateOrUpdate reports "None" instead of
-		// issuing a write that would bounce back off the HPA.
+		// later pass we re-apply exactly what is already stored.
+		//
+		// Note what actually stops the fight, because it is not CreateOrUpdate.
+		// The mutate above does `deployment.Spec = desired.Spec`, which wipes
+		// apiserver-defaulted fields, so the pre and post objects always differ
+		// and CreateOrUpdate returns Updated and issues a write on every single
+		// reconcile. What makes that harmless is the line below: the write now
+		// carries the autoscaler's own replica count, so the apiserver stores an
+		// identical object, does not bump resourceVersion, and emits no watch
+		// event. There is nothing for the HPA to bounce off. Reverting this line
+		// puts our count back on the wire and the loop returns.
 		if hpaOwnsReplicas && oldReplicas != nil {
 			deployment.Spec.Replicas = oldReplicas
 		}
@@ -2639,6 +2647,19 @@ func (r *ApplicationReconciler) ensureInfrastructureStatus(app *platformv1alpha1
 // the Application's Ready condition stale until the next periodic resync. During
 // a real scale-up that means the scale write itself is filtered while the
 // rollout's status updates still flow through.
+//
+// Two things this is honest about:
+//
+// It is an optimisation, not the fix. Handing spec.replicas back to the
+// autoscaler is what stops the fight loop; without this predicate the reconcile
+// still fires but is a no-op on the replica count. This just stops the wakeup.
+//
+// It cannot tell an autoscaler's scale write from a human running
+// `kubectl scale` on an app that has no autoscaler, so it filters both. That is
+// almost always invisible: the deployment controller's follow-up status update
+// is not scale-only, so it passes the predicate and drift correction runs within
+// milliseconds. The exception is a PAUSED Deployment, where no status update
+// follows, and an external scale then goes uncorrected until the 5m resync.
 func ignoreScaleOnlyUpdates() predicate.Predicate {
 	return predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {

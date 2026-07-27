@@ -242,6 +242,32 @@ var _ = Describe("Application Controller - HPA-owned replicas", func() {
 		Expect(drift.Message).To(ContainSubstring("image changed"))
 		Expect(drift.Message).NotTo(ContainSubstring("replicas"))
 	})
+
+	It("takes the replica count back in the pass that removes the scaling block", func() {
+		// Ownership has to hand back cleanly, and in one pass. reconcileHPA
+		// deletes our HPA further down the same reconcile, so the deployment step
+		// must already ignore that doomed HPA rather than defer to it and leave
+		// the workload parked at the autoscaler's last count for a pass.
+		deployment := &appsv1.Deployment{}
+		Expect(k8sClient.Get(ctx, nn, deployment)).To(Succeed())
+		scaled := hpaScaledTo
+		deployment.Spec.Replicas = &scaled
+		Expect(k8sClient.Update(ctx, deployment)).To(Succeed())
+
+		By("removing spec.scaling")
+		app := &platformv1alpha1.Application{}
+		Expect(k8sClient.Get(ctx, nn, app)).To(Succeed())
+		app.Spec.Scaling = nil
+		Expect(k8sClient.Update(ctx, app)).To(Succeed())
+
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("verifying the HPA is gone and spec.workload.replicas applies again")
+		Expect(k8sClient.Get(ctx, nn, &autoscalingv2.HorizontalPodAutoscaler{})).NotTo(Succeed())
+		Expect(k8sClient.Get(ctx, nn, deployment)).To(Succeed())
+		Expect(*deployment.Spec.Replicas).To(Equal(int32(1)))
+	})
 })
 
 // =============================================================================

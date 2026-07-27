@@ -57,9 +57,16 @@ fmt: ## Run go fmt against code.
 vet: ## Run go vet against code.
 	go vet ./...
 
+# KUBEBUILDER_ASSETS must be ABSOLUTE. 'setup-envtest -p path' echoes the path
+# in the same form as --bin-dir, so a relative LOCALBIN (LOCALBIN=bin, or an
+# environment that exports it) yields 'bin/k8s/<ver>'. envtest resolves that
+# against the CWD of each test binary, which 'go test' sets to that package's
+# own directory, so internal/controller looks for internal/controller/bin/k8s
+# and every envtest suite dies with "fork/exec .../etcd: no such file or
+# directory". $(abspath) anchors it to the repo root once, up front.
 .PHONY: test
 test: manifests generate fmt vet setup-envtest ## Run tests.
-	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
+	KUBEBUILDER_ASSETS="$(abspath $(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path))" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
 
 # The e2e setup assumes Kind is pre-installed and builds/loads the Manager image locally.
 # Targeting a different vendor means changing the setup under 'test/e2e'.

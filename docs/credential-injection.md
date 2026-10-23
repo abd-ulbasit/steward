@@ -58,3 +58,28 @@ Unchanged from existing KubernetesProvider conventions:
 - Database: `{app.Name}-db-credentials`
 - Cache: `{app.Name}-cache-credentials`
 - Queue: `{app.Name}-queue-credentials`
+
+## Where the plaintext lives
+
+Only in those three Secrets. The operators read the same Secrets instead of a
+copy of the password:
+
+| Component | How the operator gets the password |
+|---|---|
+| CNPG `Cluster` | `spec.bootstrap.initdb.secret.name` |
+| `RedisFailover` | `spec.auth.secretPath` |
+| `RabbitmqCluster` | `spec.secretBackend.externalSecret.name`; the operator mounts the `default_user.conf` key (RabbitMQ Cluster Operator v2.2.0 or later) |
+
+The password is not written into the Deployment, an operator CR, a ConfigMap
+rendered from a CR, or `Application.status`. `status.infrastructure.queue.url`
+is `amqp://<host>:<port>` without credentials.
+
+Releases before this change put the RabbitMQ password into
+`RabbitmqCluster.spec.rabbitmq.additionalConfig` and copied the full AMQP URL,
+password included, into `Application.status`. The next reconcile removes both.
+The RabbitMQ operator then re-renders its `<app>-queue-server-conf` ConfigMap
+without the password and rolls the broker pods once. The broker keeps its
+existing users because they are stored on its persistent volume, and the
+credentials Secret still holds the same password. The operator stops managing
+the `<app>-queue-default-user` Secret it generated earlier; it still holds a
+copy of the password and can be deleted.

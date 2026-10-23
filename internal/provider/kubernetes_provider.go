@@ -935,28 +935,48 @@ func (p *KubernetesProvider) reconcileQueue(ctx context.Context, app *platformv1
 	host := fmt.Sprintf("%s.%s.svc", queueName, ns)
 	port := int32(defaultAMQPPort)
 
-	creds, err := p.ensureCredentialSecret(ctx, app, credentialSecret{
+	// The RabbitMQ Cluster Operator reads the default user from this same
+	// Secret (spec.secretBackend.externalSecret, operator v2.2.0+): it
+	// projects the default_user.conf key into /etc/rabbitmq/conf.d and does
+	// not generate a <queue>-default-user Secret of its own. The password
+	// therefore lives only in Secrets, never in the RabbitmqCluster spec or
+	// the server-conf ConfigMap the operator renders from it.
+	if _, err := p.ensureCredentialSecret(ctx, app, credentialSecret{
 		name: secretName,
 		generated: map[string][]byte{
 			"username": []byte(sanitizeIdentifier(app.Name)),
 			"password": []byte(randomPassword(24)),
 		},
+		validate: func(data map[string][]byte) error {
+			// default_user.conf is line-oriented RabbitMQ config. A value with a
+			// line break would let whoever edits the Secret append arbitrary
+			// broker settings.
+			for _, key := range []string{"username", "password"} {
+				if strings.ContainsAny(string(data[key]), "\r\n") {
+					return &InvalidConfigError{
+						ResourceType: "queue",
+						Field:        secretName + "." + key,
+						Value:        "<redacted>",
+						Message:      "queue credentials must not contain line breaks",
+					}
+				}
+			}
+			return nil
+		},
 		derive: func(data map[string][]byte) map[string][]byte {
+			username, password := string(data["username"]), string(data["password"])
 			return map[string][]byte{
-				"host": []byte(host),
-				"port": []byte(strconv.Itoa(int(port))),
-				"connectionString": []byte(amqpConnectionString(
-					string(data["username"]), string(data["password"]), host, port)),
+				"host":              []byte(host),
+				"port":              []byte(strconv.Itoa(int(port))),
+				"connectionString":  []byte(amqpConnectionString(username, password, host, port)),
+				"default_user.conf": []byte(fmt.Sprintf("default_user = %s\ndefault_pass = %s\n", username, password)),
 			}
 		},
 		ownerGVK:  rabbitmqClusterGVK,
 		ownerName: queueName,
-	})
-	if err != nil {
+	}); err != nil {
 		return &QueueState{Phase: ResourceFailed, Type: "rabbitmq"}, err
 	}
-	username, password := string(creds["username"]), string(creds["password"])
-	conn := string(creds["connectionString"])
 
 	rabbit := &unstructured.Unstructured{}
 	rabbit.SetGroupVersionKind(rabbitmqClusterGVK)
@@ -968,11 +988,13 @@ func (p *KubernetesProvider) reconcileQueue(ctx context.Context, app *platformv1
 	replicas := int64(1)
 
 	labels := p.buildLabels(app)
-	_, err = controllerutil.CreateOrUpdate(ctx, p.client, rabbit, func() error {
+	_, err := controllerutil.CreateOrUpdate(ctx, p.client, rabbit, func() error {
 		spec := map[string]interface{}{
 			"replicas": replicas,
-			"rabbitmq": map[string]interface{}{
-				"additionalConfig": fmt.Sprintf("default_user = %s\ndefault_pass = %s", username, password),
+			"secretBackend": map[string]interface{}{
+				"externalSecret": map[string]interface{}{
+					"name": secretName,
+				},
 			},
 		}
 
@@ -1026,9 +1048,11 @@ func (p *KubernetesProvider) reconcileQueue(ctx context.Context, app *platformv1
 	}
 
 	state := &QueueState{
-		Phase:      phase,
-		Type:       string(app.Spec.Queue.Type),
-		URL:        conn,
+		Phase: phase,
+		Type:  string(app.Spec.Queue.Type),
+		// No credentials here: this value is copied into Application
+		// status, which anyone with get on applications can read.
+		URL:        fmt.Sprintf("amqp://%s:%d", host, port),
 		ARN:        fmt.Sprintf("rabbitmq/%s", queueName),
 		ResourceID: fmt.Sprintf("rabbitmq/%s", queueName),
 		Message:    message,
@@ -1343,6 +1367,9 @@ type credentialSecret struct {
 	name string
 	// generated holds the keys to write when they are missing or empty.
 	generated map[string][]byte
+	// validate, if set, checks the generated keys before anything is derived
+	// or written.
+	validate func(data map[string][]byte) error
 	// derive returns the keys computed from the final generated keys.
 	derive func(data map[string][]byte) map[string][]byte
 	// ownerGVK and ownerName identify the operator CR this Secret belongs to.
@@ -1419,6 +1446,11 @@ func (p *KubernetesProvider) applyCredentialSecret(
 	for k, v := range spec.generated {
 		if len(secret.Data[k]) == 0 {
 			secret.Data[k] = v
+		}
+	}
+	if spec.validate != nil {
+		if err := spec.validate(secret.Data); err != nil {
+			return err
 		}
 	}
 	if spec.derive != nil {

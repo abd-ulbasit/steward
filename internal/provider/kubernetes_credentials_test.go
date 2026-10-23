@@ -242,3 +242,141 @@ func TestCredentialSecrets_FillsMissingPassword(t *testing.T) {
 		t.Errorf("connectionString does not carry the generated password: %q", conn)
 	}
 }
+
+// =============================================================================
+// RABBITMQ DEFAULT USER
+// =============================================================================
+
+func rabbitOnlyDiscovery() *fakeDiscovery {
+	return &fakeDiscovery{
+		resources: map[string][]metav1.APIResource{
+			rabbitmqClusterGVK.GroupVersion().String(): {
+				{Name: "rabbitmqclusters", Kind: rabbitmqClusterGVK.Kind},
+			},
+		},
+	}
+}
+
+func queueApplication(name string, uid types.UID) *platformv1alpha1.Application {
+	app := createTestApplication(name, "default")
+	app.UID = uid
+	app.Spec.Queue = &platformv1alpha1.QueueSpec{Type: platformv1alpha1.QueueRabbitMQ}
+	return app
+}
+
+func TestQueue_PasswordStaysOutOfRabbitmqClusterAndStatus(t *testing.T) {
+	ctx := context.Background()
+	provider, cl, _ := buildKubernetesProvider(t, rabbitOnlyDiscovery())
+	app := queueApplication("orders", "uid-orders")
+
+	state, err := provider.Provision(ctx, app)
+	if err != nil && !IsNotReady(err) {
+		t.Fatalf("Provision() error = %v", err)
+	}
+
+	secret := getSecretData(t, cl, "orders-queue-credentials")
+	password := string(secret.Data["password"])
+	if password == "" {
+		t.Fatal("no password generated")
+	}
+
+	rabbit := &unstructured.Unstructured{}
+	rabbit.SetGroupVersionKind(rabbitmqClusterGVK)
+	if err := cl.Get(ctx, client.ObjectKey{Name: "orders-queue", Namespace: "default"}, rabbit); err != nil {
+		t.Fatalf("get RabbitmqCluster: %v", err)
+	}
+	raw, err := rabbit.MarshalJSON()
+	if err != nil {
+		t.Fatalf("marshal RabbitmqCluster: %v", err)
+	}
+	if strings.Contains(string(raw), password) {
+		t.Errorf("RabbitmqCluster contains the password: %s", raw)
+	}
+	ref, _, _ := unstructured.NestedString(rabbit.Object, "spec", "secretBackend", "externalSecret", "name")
+	if ref != "orders-queue-credentials" {
+		t.Errorf("spec.secretBackend.externalSecret.name = %q, want orders-queue-credentials", ref)
+	}
+
+	wantConf := "default_user = orders\ndefault_pass = " + password + "\n"
+	if got := string(secret.Data["default_user.conf"]); got != wantConf {
+		t.Errorf("default_user.conf does not match the stored credentials")
+	}
+
+	if state == nil || state.Queue == nil {
+		t.Fatal("queue state missing")
+	}
+	if strings.Contains(state.Queue.URL, password) || strings.Contains(state.Queue.URL, "@") {
+		t.Errorf("queue URL, which is copied into Application status, carries credentials: %q", state.Queue.URL)
+	}
+}
+
+func TestQueue_KeepsLegacyPasswordWhenMovingToExternalSecret(t *testing.T) {
+	ctx := context.Background()
+	provider, cl, _ := buildKubernetesProvider(t, rabbitOnlyDiscovery())
+	app := queueApplication("billing", "uid-billing")
+
+	// What an older release left behind: the password inlined into
+	// additionalConfig and an unowned credentials Secret holding the same value.
+	rabbit := &unstructured.Unstructured{}
+	rabbit.SetGroupVersionKind(rabbitmqClusterGVK)
+	rabbit.SetName("billing-queue")
+	rabbit.SetNamespace("default")
+	rabbit.SetOwnerReferences([]metav1.OwnerReference{controllerRefTo(app)})
+	_ = unstructured.SetNestedField(rabbit.Object,
+		"default_user = billing\ndefault_pass = legacy-amqp-password", "spec", "rabbitmq", "additionalConfig")
+	if err := cl.Create(ctx, rabbit); err != nil {
+		t.Fatalf("create RabbitmqCluster: %v", err)
+	}
+	if err := cl.Create(ctx, &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "billing-queue-credentials", Namespace: "default"},
+		Data: map[string][]byte{
+			"username": []byte("billing"),
+			"password": []byte("legacy-amqp-password"),
+		},
+	}); err != nil {
+		t.Fatalf("create secret: %v", err)
+	}
+
+	if _, err := provider.Provision(ctx, app); err != nil && !IsNotReady(err) {
+		t.Fatalf("Provision() error = %v", err)
+	}
+
+	if err := cl.Get(ctx, client.ObjectKey{Name: "billing-queue", Namespace: "default"}, rabbit); err != nil {
+		t.Fatalf("get RabbitmqCluster: %v", err)
+	}
+	if _, found, _ := unstructured.NestedString(rabbit.Object, "spec", "rabbitmq", "additionalConfig"); found {
+		t.Errorf("additionalConfig with the password is still in the spec")
+	}
+	secret := getSecretData(t, cl, "billing-queue-credentials")
+	if got := string(secret.Data["default_user.conf"]); got != "default_user = billing\ndefault_pass = legacy-amqp-password\n" {
+		t.Errorf("default_user.conf does not carry the password the broker already uses")
+	}
+}
+
+func TestQueue_RejectsLineBreaksInCredentials(t *testing.T) {
+	ctx := context.Background()
+	provider, cl, _ := buildKubernetesProvider(t, rabbitOnlyDiscovery())
+	app := queueApplication("inject", "uid-inject")
+
+	if err := cl.Create(ctx, &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "inject-queue-credentials",
+			Namespace:       "default",
+			OwnerReferences: []metav1.OwnerReference{controllerRefTo(app)},
+		},
+		Data: map[string][]byte{
+			"username": []byte("inject"),
+			"password": []byte("x\nloopback_users = none"),
+		},
+	}); err != nil {
+		t.Fatalf("create secret: %v", err)
+	}
+
+	_, err := provider.Provision(ctx, app)
+	if !IsInvalidConfig(err) {
+		t.Fatalf("Provision() error = %v, want InvalidConfigError", err)
+	}
+	if secret := getSecretData(t, cl, "inject-queue-credentials"); len(secret.Data["default_user.conf"]) != 0 {
+		t.Errorf("default_user.conf was written from a value containing a line break")
+	}
+}

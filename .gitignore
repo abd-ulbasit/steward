@@ -41,7 +41,8 @@ kubeconfig
 *.tfstate
 *.tfstate.*
 *.tfplan
-.terraform.lock.hcl
+# .terraform.lock.hcl is NOT ignored: commit it so provider versions and
+# checksums are pinned (HashiCorp guidance).
 terraform.tfvars
 *.auto.tfvars
 
@@ -63,5 +64,6 @@ logs/
 tmp/
 temp/
 
-# Local environment overrides (see config.example.yaml for the documented settings)
+# Local environment overrides. The operator reads only flags and environment
+# variables such as STEWARD_PROVIDER; config.example.yaml is an unused sketch.
 .env

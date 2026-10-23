@@ -1,5 +1,23 @@
-# Steward Configuration Example
-# Copy to config.yaml and customize
+# Steward configuration sketch -- NOT READ BY ANY CODE
+#
+# Nothing in this repository loads this file. It is a design sketch from the
+# initial project setup and describes components that do not exist (a
+# Terraform-backed AWS provider, a platform API, Grafana dashboards, a service
+# catalog). The operator is configured only by:
+#   - command-line flags (cmd/main.go; see config/manager/manager.yaml), and
+#   - environment variables read by internal/provider/factory.go, chiefly
+#     STEWARD_PROVIDER ("kubernetes", or "mock" for local development; aws
+#     and gcp are recognised but not implemented).
+#
+# If the Terraform section is ever implemented, three points from the 2026-10
+# security review apply:
+#   - workDir /tmp/steward-terraform cannot be written: the manager runs with
+#     readOnlyRootFilesystem and no volumes. Mount an emptyDir.
+#   - S3 state locking no longer needs DynamoDB: Terraform 1.11+ supports
+#     use_lockfile = true on the S3 backend, and DynamoDB locking is deprecated.
+#   - generated database passwords would land in Terraform state; prefer
+#     provider-managed master passwords and treat the state bucket as a secret
+#     store (encryption, versioning, tight IAM), not only encrypt: true.
 
 # Controller settings
 controller:

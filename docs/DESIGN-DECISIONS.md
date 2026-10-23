@@ -452,3 +452,32 @@ today's behaviour); when set, build `DefaultNamespaces` from it and render
 RoleBindings instead of the ClusterRoleBinding from a kustomize overlay.
 envtest runs as cluster-admin, so the change also needs an e2e check that runs
 the manager under its own ServiceAccount to prove the reduced RBAC suffices.
+
+### Tenant pods get baseline hardening by default
+
+The operator's own pod runs under the restricted Pod Security Standard, but the
+Deployments it generated had no security settings at all: the runtime's
+default seccomp profile (Unconfined on most kubelets), privilege escalation
+allowed, and the namespace's default ServiceAccount token mounted in every pod.
+
+**Chosen:** every generated pod gets the settings that do not depend on how the
+image was built — `seccompProfile: RuntimeDefault`,
+`allowPrivilegeEscalation: false`, `automountServiceAccountToken: false` — and
+`spec.workload.security.profile: restricted` opts into `runAsNonRoot: true` and
+`capabilities.drop: [ALL]` on top. Two opt-outs exist for workloads the
+defaults break: `security.allowPrivilegeEscalation: true` (setuid binaries such
+as `sudo`; rejected by the webhook under `restricted`) and
+`security.automountServiceAccountToken: true` (applications that call the
+Kubernetes API). The API exposes a fixed set of fields, not a raw
+`SecurityContext`, so an Application cannot ask for `privileged`, added
+capabilities or host namespaces.
+
+**Alternative:** default to `restricted`. That matches the operator's own pod,
+but `runAsNonRoot` refuses to start any image whose user is root, which
+includes the `nginx` and `postgres` images in `examples/` and
+`config/samples/`, and every existing Application using such an image would
+stop rolling out after an operator upgrade.
+
+**Consequence:** upgrading the operator changes every generated pod template
+once, so each Deployment rolls. Applications that read the ServiceAccount token
+must set the opt-out before upgrading.

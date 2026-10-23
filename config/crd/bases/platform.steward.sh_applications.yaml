@@ -755,6 +755,50 @@ spec:
                           More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                         type: object
                     type: object
+                  security:
+                    description: |-
+                      Security tunes the pod and container security settings of the generated
+                      Deployment. When omitted, the baseline profile applies; see
+                      WorkloadSecuritySpec.
+                    properties:
+                      allowPrivilegeEscalation:
+                        description: |-
+                          AllowPrivilegeEscalation is an opt-out. Defaults to false; set true only
+                          for images that need setuid binaries. Not allowed with profile restricted.
+                        type: boolean
+                      automountServiceAccountToken:
+                        description: |-
+                          AutomountServiceAccountToken is an opt-out. Defaults to false; set true
+                          only if the application calls the Kubernetes API.
+                        type: boolean
+                      fsGroup:
+                        description: FSGroup sets the group that owns mounted volumes.
+                        format: int64
+                        minimum: 0
+                        type: integer
+                      profile:
+                        default: baseline
+                        description: Profile selects the hardening level.
+                        enum:
+                        - baseline
+                        - restricted
+                        type: string
+                      readOnlyRootFilesystem:
+                        description: ReadOnlyRootFilesystem mounts the container's
+                          root filesystem read-only.
+                        type: boolean
+                      runAsGroup:
+                        description: RunAsGroup sets the primary GID the container
+                          runs as.
+                        format: int64
+                        minimum: 0
+                        type: integer
+                      runAsUser:
+                        description: RunAsUser sets the UID the container runs as.
+                        format: int64
+                        minimum: 0
+                        type: integer
+                    type: object
                 required:
                 - image
                 type: object

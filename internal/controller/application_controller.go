@@ -1402,16 +1402,21 @@ func (r *ApplicationReconciler) buildDeployment(app *platformv1alpha1.Applicatio
 		resources = *app.Spec.Workload.Resources
 	}
 
+	// Security settings: baseline defaults unless the spec asks for more or
+	// opts out. See workloadSecurity.
+	podSecurity, containerSecurity, automountToken := workloadSecurity(app)
+
 	// Build the container
 	container := corev1.Container{
-		Name:           "app",
-		Image:          app.Spec.Workload.Image,
-		Ports:          containerPorts,
-		Resources:      resources,
-		Env:            env,
-		EnvFrom:        app.Spec.Workload.EnvFrom,
-		LivenessProbe:  livenessProbe,
-		ReadinessProbe: readinessProbe,
+		Name:            "app",
+		Image:           app.Spec.Workload.Image,
+		Ports:           containerPorts,
+		Resources:       resources,
+		Env:             env,
+		EnvFrom:         app.Spec.Workload.EnvFrom,
+		LivenessProbe:   livenessProbe,
+		ReadinessProbe:  readinessProbe,
+		SecurityContext: containerSecurity,
 	}
 
 	if len(app.Spec.Workload.Command) > 0 {
@@ -1440,7 +1445,9 @@ func (r *ApplicationReconciler) buildDeployment(app *platformv1alpha1.Applicatio
 					Labels: labels,
 				},
 				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{container},
+					Containers:                   []corev1.Container{container},
+					SecurityContext:              podSecurity,
+					AutomountServiceAccountToken: automountToken,
 				},
 			},
 		},

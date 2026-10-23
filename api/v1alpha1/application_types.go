@@ -438,6 +438,79 @@ type WorkloadSpec struct {
 	// Args provides arguments to the command.
 	// +optional
 	Args []string `json:"args,omitempty"`
+
+	// Security tunes the pod and container security settings of the generated
+	// Deployment. When omitted, the baseline profile applies; see
+	// WorkloadSecuritySpec.
+	// +optional
+	Security *WorkloadSecuritySpec `json:"security,omitempty"`
+}
+
+// SecurityProfile selects how much hardening steward applies to the workload.
+// +kubebuilder:validation:Enum=baseline;restricted
+type SecurityProfile string
+
+const (
+	// SecurityProfileBaseline applies settings every image tolerates, including
+	// images that run as root: seccomp RuntimeDefault, no privilege escalation,
+	// and no ServiceAccount token mounted.
+	SecurityProfileBaseline SecurityProfile = "baseline"
+	// SecurityProfileRestricted adds runAsNonRoot and drops all capabilities,
+	// which satisfies the Kubernetes "restricted" Pod Security Standard.
+	SecurityProfileRestricted SecurityProfile = "restricted"
+)
+
+// WorkloadSecuritySpec configures the security settings steward writes into
+// the pod template.
+//
+// Defaults (profile: baseline, or no security block at all):
+//
+//	pod:       seccompProfile RuntimeDefault, automountServiceAccountToken false
+//	container: allowPrivilegeEscalation false
+//
+// profile: restricted additionally sets runAsNonRoot true and drops ALL
+// capabilities. The image must then run as a non-root numeric UID, or
+// runAsUser must be set.
+//
+// Opt-outs, for workloads that break under the defaults:
+//   - allowPrivilegeEscalation: true, for images that rely on setuid binaries
+//     such as sudo (baseline only)
+//   - automountServiceAccountToken: true, for applications that call the
+//     Kubernetes API with the namespace's default ServiceAccount
+type WorkloadSecuritySpec struct {
+	// Profile selects the hardening level.
+	// +kubebuilder:default=baseline
+	// +optional
+	Profile SecurityProfile `json:"profile,omitempty"`
+
+	// RunAsUser sets the UID the container runs as.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	RunAsUser *int64 `json:"runAsUser,omitempty"`
+
+	// RunAsGroup sets the primary GID the container runs as.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	RunAsGroup *int64 `json:"runAsGroup,omitempty"`
+
+	// FSGroup sets the group that owns mounted volumes.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	FSGroup *int64 `json:"fsGroup,omitempty"`
+
+	// ReadOnlyRootFilesystem mounts the container's root filesystem read-only.
+	// +optional
+	ReadOnlyRootFilesystem *bool `json:"readOnlyRootFilesystem,omitempty"`
+
+	// AllowPrivilegeEscalation is an opt-out. Defaults to false; set true only
+	// for images that need setuid binaries. Not allowed with profile restricted.
+	// +optional
+	AllowPrivilegeEscalation *bool `json:"allowPrivilegeEscalation,omitempty"`
+
+	// AutomountServiceAccountToken is an opt-out. Defaults to false; set true
+	// only if the application calls the Kubernetes API.
+	// +optional
+	AutomountServiceAccountToken *bool `json:"automountServiceAccountToken,omitempty"`
 }
 
 // ContainerPort defines a port exposed by the container.

@@ -57,6 +57,19 @@ fmt: ## Run go fmt against code.
 vet: ## Run go vet against code.
 	go vet ./...
 
+# CI runs this instead of mutating inputs before the tests: it regenerates
+# CRDs, RBAC, webhook manifests and deepcopy code, formats, tidies go.mod, and
+# fails if anything differs from what is committed.
+.PHONY: verify-generated
+verify-generated: manifests generate fmt ## Fail if generated files, formatting or go.mod/go.sum are stale.
+	go mod tidy
+	@if [ -n "$$(git status --porcelain)" ]; then \
+		echo "Generated files are out of date. Run make manifests generate fmt and go mod tidy, then commit:"; \
+		git status --porcelain; \
+		git --no-pager diff --stat; \
+		exit 1; \
+	fi
+
 # KUBEBUILDER_ASSETS must be ABSOLUTE. 'setup-envtest -p path' echoes the path
 # in the same form as --bin-dir, so a relative LOCALBIN (LOCALBIN=bin, or an
 # environment that exports it) yields 'bin/k8s/<ver>'. envtest resolves that
@@ -299,7 +312,7 @@ ENVTEST_K8S_VERSION ?= $(shell v='$(call gomodver,k8s.io/api)'; \
   [ -n "$$v" ] || { echo "Set ENVTEST_K8S_VERSION manually (k8s.io/api replace has no tag)" >&2; exit 1; }; \
   printf '%s\n' "$$v" | sed -E 's/^v?[0-9]+\.([0-9]+).*/1.\1/')
 
-GOLANGCI_LINT_VERSION ?= v2.7.2
+GOLANGCI_LINT_VERSION ?= v2.14.0
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
 $(KUSTOMIZE): $(LOCALBIN)

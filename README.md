@@ -212,6 +212,10 @@ Do this before you deploy the new manager:
    | has a `queue:` block | RabbitMQ Cluster Operator v2.1.0 or later in the cluster | the Application fails with `InfrastructureInvalid` |
 
 3. Deploy the new manager.
+4. Rotate every RabbitMQ password. Earlier releases copied it into the
+   `RabbitmqCluster` spec, a ConfigMap and `Application.status`, so treat it
+   as exposed; the steps are in
+   [docs/credential-injection.md](docs/credential-injection.md#rotate-rabbitmq-passwords-set-by-earlier-releases).
 
 [docs/credential-injection.md](docs/credential-injection.md#upgrading-node-postgres-applications)
 has the node-postgres detail and how to move those applications to TLS later;

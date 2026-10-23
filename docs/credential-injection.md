@@ -151,3 +151,28 @@ existing users because they are stored on its persistent volume, and the
 credentials Secret still holds the same password. The operator stops managing
 the `<app>-queue-default-user` Secret it generated earlier; it still holds a
 copy of the password and can be deleted.
+
+### Rotate RabbitMQ passwords set by earlier releases
+
+The upgrade stops further exposure but keeps the same password in use. Treat
+every RabbitMQ password from a release before this change as exposed: anyone
+with `get` on `applications` (`status.infrastructure.queue.url`), on
+`rabbitmqclusters` (`spec.rabbitmq.additionalConfig`) or on `configmaps`
+(`<app>-queue-server-conf`) in that namespace could read it. Steward has no
+rotation of its own, so rotate by hand, per Application, after the upgrade:
+
+1. Change the password on the broker. The user is the `username` key of
+   `<app>-queue-credentials`:
+   `kubectl exec <app>-queue-server-0 -c rabbitmq -- rabbitmqctl change_password <username> <new-password>`.
+   From here until step 3, new connections with the old password fail;
+   connections already open stay up.
+2. Put the same new value under `password` in `<app>-queue-credentials`
+   (`kubectl edit secret`, or `kubectl patch` with `stringData`). Steward
+   keeps a non-empty password and recomputes `connectionString` and
+   `default_user.conf` from it on its next reconcile.
+3. Restart the workload so it reads the new `AMQP_URL` and
+   `RABBITMQ_PASSWORD`: `kubectl rollout restart deployment/<app>`.
+4. Delete `<app>-queue-default-user`, the operator's old copy.
+
+The new password must not contain a line break; steward rejects it, because
+`default_user.conf` is line-oriented.

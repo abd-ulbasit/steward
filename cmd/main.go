@@ -220,6 +220,9 @@ func main() {
 		// migrating to the new events.EventRecorder API would require rewriting every
 		// Recorder.Event call across the controller and is out of scope here.
 		Recorder: mgr.GetEventRecorderFor("application-controller"),
+		// Uncached reads for the one Secret the label-filtered cache can
+		// miss: the Application's own Secret after its labels were removed.
+		APIReader: mgr.GetAPIReader(),
 		// ProviderFactory wires in InfrastructureProvider implementations.
 		ProviderFactory: providerFactory,
 		DiscoveryClient: discoveryClient,

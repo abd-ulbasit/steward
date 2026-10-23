@@ -419,9 +419,17 @@ the cluster nor needs the `watch` verb on Pods.
 bounds the cache, but it changes what the operator manages, which is a product
 decision, not a memory fix.
 
+The per-Application Secret (named like the Application) gets the same
+fallback. If someone removes its labels, it drops out of the cache; the
+reconciler finds it with an uncached read and, because the Application
+controls it, puts the labels back and reports it as corrected drift. Without
+that read the cached `Get` would say NotFound and every pass would fail on
+`Create` with `AlreadyExists`.
+
 **Consequence:** an unlabelled Secret that happens to be named exactly like an
-Application is no longer silently adopted as that Application's Secret; the
-create fails with `AlreadyExists` until it is renamed or deleted.
+Application, and is not controlled by it, is no longer silently adopted as
+that Application's Secret. The Application goes `Failed` with reason
+`SecretConflict` until the Secret is renamed or deleted.
 
 ### The RBAC is still cluster-wide (design note)
 

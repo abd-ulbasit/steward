@@ -1,8 +1,13 @@
-# Dependabot keeps the three kinds of pinned dependency current:
-# Go modules (go.mod), the SHA-pinned GitHub Actions, and the digest-pinned
-# base images in the Dockerfile. The cooldown skips releases younger than a
-# week, so a hijacked release has time to be noticed and pulled before it is
-# proposed here.
+# Dependabot keeps three kinds of pinned dependency current: Go modules
+# (go.mod), the SHA-pinned GitHub Actions, and the digest-pinned base images
+# in the Dockerfile and .devcontainer/Dockerfile. The cooldown skips releases
+# younger than a week, so a hijacked release has time to be noticed and pulled
+# before it is proposed here.
+#
+# It does not see versions written into scripts, workflow inputs or the
+# Makefile (kind, kubebuilder, kubectl, govulncheck, the Trivy version,
+# golangci-lint, ...). SECURITY.md lists those manual pins and who reviews
+# them.
 version: 2
 updates:
   - package-ecosystem: gomod
@@ -37,7 +42,9 @@ updates:
           - '*'
 
   - package-ecosystem: docker
-    directory: /
+    directories:
+      - /
+      - /.devcontainer
     schedule:
       interval: weekly
     cooldown:

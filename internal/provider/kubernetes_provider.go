@@ -145,6 +145,20 @@ type KubernetesProvider struct {
 	client    client.Client
 	scheme    *runtime.Scheme
 	discovery discoveryClient
+
+	// uncached reads Secrets straight from the API server. It is only used
+	// when the cached client cannot see a Secret, because the manager cache
+	// holds labelled Secrets only (see CacheOptions). Nil means "the client
+	// already sees everything", which is the case for tests and the CLI.
+	uncached client.Reader
+}
+
+// WithUncachedReader sets the reader used for Secrets the manager cache does
+// not hold. Pass mgr.GetAPIReader() when the client comes from a manager
+// configured with CacheOptions.
+func (p *KubernetesProvider) WithUncachedReader(r client.Reader) *KubernetesProvider {
+	p.uncached = r
+	return p
 }
 
 // NewKubernetesProvider creates a Kubernetes-native provider.
@@ -1328,13 +1342,13 @@ func (p *KubernetesProvider) ensureOperatorAvailable(gvk schema.GroupVersionKind
 
 func (p *KubernetesProvider) buildLabels(app *platformv1alpha1.Application) map[string]string {
 	return map[string]string{
-		"app.kubernetes.io/name":       app.Name,
-		"app.kubernetes.io/instance":   app.Name,
-		"app.kubernetes.io/managed-by": "steward",
-		"app.kubernetes.io/part-of":    "steward",
-		"platform.steward.sh/team":     sanitizeLabelValue(app.Spec.Team),
-		"platform.steward.sh/owner":    sanitizeLabelValue(app.Spec.Owner),
-		"platform.steward.sh/tier":     string(app.Spec.Tier),
+		"app.kubernetes.io/name":     app.Name,
+		"app.kubernetes.io/instance": app.Name,
+		ManagedByLabel:               ManagedByValue,
+		"app.kubernetes.io/part-of":  "steward",
+		"platform.steward.sh/team":   sanitizeLabelValue(app.Spec.Team),
+		"platform.steward.sh/owner":  sanitizeLabelValue(app.Spec.Owner),
+		"platform.steward.sh/tier":   string(app.Spec.Tier),
 	}
 }
 
@@ -1518,8 +1532,18 @@ func (p *KubernetesProvider) checkSecretAdoptable(
 }
 
 // getSecret reads a Secret and reports whether it exists.
+//
+// The cached client only sees Secrets labelled managed-by=steward. A
+// credential Secret from an older release, or one whose labels someone
+// removed, is invisible to it; treating that as "not found" would make every
+// reconcile fail on Create with AlreadyExists. So a cache miss is confirmed
+// against the API server before the Secret is considered absent.
 func (p *KubernetesProvider) getSecret(ctx context.Context, namespace, name string, secret *corev1.Secret) (bool, error) {
-	err := p.client.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, secret)
+	key := client.ObjectKey{Name: name, Namespace: namespace}
+	err := p.client.Get(ctx, key, secret)
+	if apierrors.IsNotFound(err) && p.uncached != nil {
+		err = p.uncached.Get(ctx, key, secret)
+	}
 	if err == nil {
 		return true, nil
 	}

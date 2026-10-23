@@ -164,8 +164,13 @@ func main() {
 		Metrics:                metricsServerOptions,
 		WebhookServer:          webhookServer,
 		HealthProbeBindAddress: probeAddr,
-		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "98ee1d4e.steward.sh",
+		// Cache only the Secrets steward created and read Pods uncached, so the
+		// process does not hold a copy of every Secret and Pod in the cluster.
+		// See internal/provider/cache.go.
+		Cache:            provider.CacheOptions(),
+		Client:           provider.ClientOptions(),
+		LeaderElection:   enableLeaderElection,
+		LeaderElectionID: "98ee1d4e.steward.sh",
 		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
 		// when the Manager ends. This requires the binary to immediately end when the
 		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly
@@ -185,7 +190,11 @@ func main() {
 
 	providerFactory := provider.NewFactory()
 	providerFactory.RegisterProvider(provider.ProviderKubernetes, func(cfg *provider.ProviderConfig) (provider.InfrastructureProvider, error) {
-		return provider.NewKubernetesProvider(cfg, mgr.GetClient(), mgr.GetScheme(), nil)
+		p, err := provider.NewKubernetesProvider(cfg, mgr.GetClient(), mgr.GetScheme(), nil)
+		if err != nil {
+			return nil, err
+		}
+		return p.WithUncachedReader(mgr.GetAPIReader()), nil
 	})
 
 	discoveryClient, err := discovery.NewDiscoveryClientForConfig(mgr.GetConfig())

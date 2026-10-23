@@ -385,3 +385,70 @@ Stated plainly rather than left for a reviewer to find:
 - **`status.estimatedMonthlyCost` is defined but not populated** by the
   Kubernetes provider — the `CostEstimator` capability exists for a cloud
   provider that has real prices.
+
+---
+
+## 7. Security boundaries
+
+What the operator can reach, what it keeps in memory, and what a tenant can
+make it do on their behalf. Each subsection records the choice, the
+alternative, and why.
+
+### The Secret cache holds only steward's Secrets
+
+`Owns(&corev1.Secret{})` starts a Secret informer, and by default an informer
+lists and watches its type across the whole cluster. The operator process
+therefore held a copy of every Secret in every namespace — other teams' TLS
+keys, ServiceAccount tokens, Helm release payloads — in a pod with a 128Mi
+limit.
+
+**Chosen:** the manager cache selects Secrets by
+`app.kubernetes.io/managed-by=steward` (`provider.CacheOptions`). Every Secret
+the operator reads carries that label: the per-Application Secret and the
+credential Secrets (§4). A cached miss is confirmed with one uncached read
+(`mgr.GetAPIReader()`), so a credential Secret written by an older release
+without labels is still found, adopted, and labelled. Pods are read uncached
+(`client.CacheOptions.DisableFor`), so the operator neither caches every Pod in
+the cluster nor needs the `watch` verb on Pods.
+
+**Alternative:** `DefaultNamespaces` / a `--watch-namespaces` flag. It also
+bounds the cache, but it changes what the operator manages, which is a product
+decision, not a memory fix.
+
+**Consequence:** an unlabelled Secret that happens to be named exactly like an
+Application is no longer silently adopted as that Application's Secret; the
+create fails with `AlreadyExists` until it is renamed or deleted.
+
+### The RBAC is still cluster-wide (design note)
+
+**Problem.** The cache change bounds what is in memory, not what the
+ServiceAccount token can do. `manager-role` is a ClusterRole with
+create/update/delete/list/watch on Secrets, Services, ConfigMaps, PVCs and
+Deployments in every namespace (Trivy KSV-0041 critical, KSV-0056 high). Anyone
+holding that token can read or rewrite every Secret in the cluster.
+
+**Options.**
+
+1. *Keep the ClusterRole* (today). Simple; any namespace can host Applications.
+2. *Watch-namespaces flag plus a RoleBinding per namespace.* The manager cache
+   uses `cache.Options.DefaultNamespaces`; the ClusterRole is bound with
+   RoleBindings only in the listed namespaces. A compromise is bounded to those
+   namespaces. Onboarding a namespace becomes a platform-team change.
+3. *Split read and write.* Keep cluster-wide get/list/watch on the operator's
+   own CRDs, but grant Secret verbs only through per-namespace RoleBindings that
+   a namespace admin creates to opt in. Same blast radius as option 2, with
+   onboarding delegated to the namespace.
+4. *Stop reading Secrets at all.* Generate credentials inside the database
+   operators (CNPG and the RabbitMQ operator can) and only reference them. The
+   operator would still need `create` for Redis, and the Secret contents would
+   no longer be uniform.
+
+**Recommendation.** Option 2. It is the standard multi-tenant operator shape,
+it composes with the label-scoped cache, and it can be adopted without changing
+the Application API.
+
+**Migration.** Add `--watch-namespaces` (empty means all, so the default keeps
+today's behaviour); when set, build `DefaultNamespaces` from it and render
+RoleBindings instead of the ClusterRoleBinding from a kustomize overlay.
+envtest runs as cluster-admin, so the change also needs an e2e check that runs
+the manager under its own ServiceAccount to prove the reduced RBAC suffices.

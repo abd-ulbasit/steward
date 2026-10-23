@@ -501,16 +501,17 @@ func (p *KubernetesProvider) Destroy(ctx context.Context, app *platformv1alpha1.
 
 func (p *KubernetesProvider) reconcileDatabase(ctx context.Context, app *platformv1alpha1.Application) (*DatabaseState, error) {
 	if app.Spec.Database.Type != platformv1alpha1.DatabasePostgres {
-		return &DatabaseState{
-				Phase:   ResourceFailed,
-				Engine:  string(app.Spec.Database.Type),
-				Message: "only postgres is supported by the Kubernetes provider",
-			}, &InvalidConfigError{
-				ResourceType: "database",
-				Field:        "type",
-				Value:        string(app.Spec.Database.Type),
-				Message:      "only postgres (CloudNativePG) is supported in-cluster",
-			}
+		state := &DatabaseState{
+			Phase:   ResourceFailed,
+			Engine:  string(app.Spec.Database.Type),
+			Message: "only postgres is supported by the Kubernetes provider",
+		}
+		return state, &InvalidConfigError{
+			ResourceType: "database",
+			Field:        "type",
+			Value:        string(app.Spec.Database.Type),
+			Message:      "only postgres (CloudNativePG) is supported in-cluster",
+		}
 	}
 
 	if err := p.ensureOperatorAvailable(cnpgClusterGVK); err != nil {
@@ -724,16 +725,17 @@ func (p *KubernetesProvider) cleanupDatabase(ctx context.Context, app *platformv
 
 func (p *KubernetesProvider) reconcileCache(ctx context.Context, app *platformv1alpha1.Application) (*CacheState, error) {
 	if app.Spec.Cache.Type != platformv1alpha1.CacheRedis {
-		return &CacheState{
-				Phase:   ResourceFailed,
-				Engine:  string(app.Spec.Cache.Type),
-				Message: "only redis is supported by the Kubernetes provider",
-			}, &InvalidConfigError{
-				ResourceType: "cache",
-				Field:        "type",
-				Value:        string(app.Spec.Cache.Type),
-				Message:      "only redis is supported in-cluster",
-			}
+		state := &CacheState{
+			Phase:   ResourceFailed,
+			Engine:  string(app.Spec.Cache.Type),
+			Message: "only redis is supported by the Kubernetes provider",
+		}
+		return state, &InvalidConfigError{
+			ResourceType: "cache",
+			Field:        "type",
+			Value:        string(app.Spec.Cache.Type),
+			Message:      "only redis is supported in-cluster",
+		}
 	}
 
 	if err := p.ensureOperatorAvailable(redisFailoverGVK); err != nil {
@@ -934,16 +936,17 @@ func (p *KubernetesProvider) cleanupCache(ctx context.Context, app *platformv1al
 
 func (p *KubernetesProvider) reconcileQueue(ctx context.Context, app *platformv1alpha1.Application) (*QueueState, error) {
 	if app.Spec.Queue.Type != platformv1alpha1.QueueRabbitMQ {
-		return &QueueState{
-				Phase:   ResourceFailed,
-				Type:    string(app.Spec.Queue.Type),
-				Message: "only rabbitmq is supported by the Kubernetes provider",
-			}, &InvalidConfigError{
-				ResourceType: "queue",
-				Field:        "type",
-				Value:        string(app.Spec.Queue.Type),
-				Message:      "only rabbitmq is supported in-cluster",
-			}
+		state := &QueueState{
+			Phase:   ResourceFailed,
+			Type:    string(app.Spec.Queue.Type),
+			Message: "only rabbitmq is supported by the Kubernetes provider",
+		}
+		return state, &InvalidConfigError{
+			ResourceType: "queue",
+			Field:        "type",
+			Value:        string(app.Spec.Queue.Type),
+			Message:      "only rabbitmq is supported in-cluster",
+		}
 	}
 
 	if err := p.ensureOperatorAvailable(rabbitmqClusterGVK); err != nil {

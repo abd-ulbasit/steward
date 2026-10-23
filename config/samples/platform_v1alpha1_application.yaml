@@ -25,7 +25,7 @@ spec:
           sleep 5
         done
         echo "Database is reachable! Running connectivity test..."
-        psql "postgresql://$PGUSER:$PGPASSWORD@$PGHOST:$PGPORT/$PGDATABASE?sslmode=disable" \
+        psql "postgresql://$PGUSER:$PGPASSWORD@$PGHOST:$PGPORT/$PGDATABASE?sslmode=require" \
           -c "SELECT 1 AS connected, current_database(), current_user, version();"
         echo "SUCCESS: Full database connectivity verified."
         echo "Staying alive for inspection..."

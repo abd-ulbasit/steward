@@ -554,7 +554,33 @@ type DatabaseSpec struct {
 	// Backup configures automated backup settings.
 	// +optional
 	Backup *BackupSpec `json:"backup,omitempty"`
+
+	// SSLMode is the sslmode written into the injected DATABASE_URL.
+	//
+	//   - require (default): the connection is encrypted. The server
+	//     certificate is not verified, so no CA has to be mounted in the pod.
+	//   - disable: no TLS; the password and all data cross the pod network in
+	//     cleartext. Only for clients that cannot connect otherwise, for
+	//     example node-postgres, which treats "require" as full certificate
+	//     verification and rejects the in-cluster CA.
+	//
+	// The PG* variables are not affected; libpq reads PGSSLMODE for those.
+	// +kubebuilder:validation:Enum=require;disable
+	// +kubebuilder:default=require
+	// +optional
+	SSLMode PostgresSSLMode `json:"sslMode,omitempty"`
 }
+
+// PostgresSSLMode is the libpq sslmode used in the generated connection string.
+type PostgresSSLMode string
+
+const (
+	// PostgresSSLModeRequire encrypts the connection without verifying the
+	// server certificate.
+	PostgresSSLModeRequire PostgresSSLMode = "require"
+	// PostgresSSLModeDisable turns TLS off. Credentials travel in cleartext.
+	PostgresSSLModeDisable PostgresSSLMode = "disable"
+)
 
 // BackupSpec defines backup configuration.
 type BackupSpec struct {

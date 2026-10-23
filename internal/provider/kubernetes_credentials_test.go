@@ -380,3 +380,69 @@ func TestQueue_RejectsLineBreaksInCredentials(t *testing.T) {
 		t.Errorf("default_user.conf was written from a value containing a line break")
 	}
 }
+
+// =============================================================================
+// POSTGRES DSN
+// =============================================================================
+
+func TestDatabase_ConnectionStringRequiresTLS(t *testing.T) {
+	ctx := context.Background()
+	provider, cl, _ := buildKubernetesProvider(t, cnpgOnlyDiscovery())
+	app := databaseApplication("tls", "uid-tls")
+
+	if _, err := provider.Provision(ctx, app); err != nil && !IsNotReady(err) {
+		t.Fatalf("Provision() error = %v", err)
+	}
+
+	conn := string(getSecretData(t, cl, "tls-db-credentials").Data["connectionString"])
+	if !strings.HasSuffix(conn, "?sslmode=require") {
+		t.Errorf("connectionString = %q, want sslmode=require", conn)
+	}
+}
+
+func TestDatabase_ExistingConnectionStringIsUpgradedToTLS(t *testing.T) {
+	ctx := context.Background()
+	provider, cl, _ := buildKubernetesProvider(t, cnpgOnlyDiscovery())
+	app := databaseApplication("old", "uid-old")
+
+	if err := cl.Create(ctx, &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "old-db-credentials",
+			Namespace:       "default",
+			OwnerReferences: []metav1.OwnerReference{controllerRefTo(app)},
+		},
+		Data: map[string][]byte{
+			"username":         []byte("old"),
+			"password":         []byte("kept-password"),
+			"database":         []byte("old"),
+			"connectionString": []byte("postgresql://old:kept-password@old-db-rw.default.svc:5432/old?sslmode=disable"),
+		},
+	}); err != nil {
+		t.Fatalf("create secret: %v", err)
+	}
+
+	if _, err := provider.Provision(ctx, app); err != nil && !IsNotReady(err) {
+		t.Fatalf("Provision() error = %v", err)
+	}
+
+	want := "postgresql://old:kept-password@old-db-rw.default.svc:5432/old?sslmode=require"
+	if got := string(getSecretData(t, cl, "old-db-credentials").Data["connectionString"]); got != want {
+		t.Errorf("connectionString = %q, want %q", got, want)
+	}
+}
+
+func TestDatabase_SSLModeDisableIsAnExplicitOptOut(t *testing.T) {
+	ctx := context.Background()
+	provider, cl, _ := buildKubernetesProvider(t, cnpgOnlyDiscovery())
+	app := databaseApplication("node", "uid-node")
+	app.Spec.Database.SSLMode = platformv1alpha1.PostgresSSLModeDisable
+
+	if _, err := provider.Provision(ctx, app); err != nil && !IsNotReady(err) {
+		t.Fatalf("Provision() error = %v", err)
+	}
+
+	conn := string(getSecretData(t, cl, "node-db-credentials").Data["connectionString"])
+	if !strings.HasSuffix(conn, "?sslmode=disable") {
+		t.Errorf("connectionString = %q, want the opted-out sslmode=disable", conn)
+	}
+}

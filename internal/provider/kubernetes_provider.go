@@ -521,7 +521,8 @@ func (p *KubernetesProvider) reconcileDatabase(ctx context.Context, app *platfor
 				"host": []byte(host),
 				"port": []byte(strconv.Itoa(int(port))),
 				"connectionString": []byte(postgresConnectionString(
-					string(data["username"]), string(data["password"]), host, port, string(data["database"]))),
+					string(data["username"]), string(data["password"]), host, port, string(data["database"]),
+					postgresSSLMode(app.Spec.Database))),
 			}
 		},
 		ownerGVK:  cnpgClusterGVK,
@@ -1523,14 +1524,36 @@ func (p *KubernetesProvider) getSecret(ctx context.Context, namespace, name stri
 	return false, err
 }
 
+// postgresSSLMode returns the sslmode written into DATABASE_URL.
+//
+// CloudNativePG always serves TLS, with a server certificate signed by the
+// per-cluster CA in the <cluster>-ca Secret. "require" encrypts the connection
+// and needs nothing mounted in the application pod. It does not authenticate
+// the server; "verify-full" would, but every application would first have to
+// mount that CA and point sslrootcert at it, and WorkloadSpec has no volumes.
+// "disable" (the only value before spec.database.sslMode existed) sends the
+// password and all data in cleartext across the pod network, so it is an
+// explicit opt-out.
+func postgresSSLMode(db *platformv1alpha1.DatabaseSpec) platformv1alpha1.PostgresSSLMode {
+	if db != nil && db.SSLMode == platformv1alpha1.PostgresSSLModeDisable {
+		return platformv1alpha1.PostgresSSLModeDisable
+	}
+	return platformv1alpha1.PostgresSSLModeRequire
+}
+
 // postgresConnectionString builds the DSN stored under connectionString.
-func postgresConnectionString(username, password, host string, port int32, database string) string {
+func postgresConnectionString(
+	username, password, host string,
+	port int32,
+	database string,
+	sslMode platformv1alpha1.PostgresSSLMode,
+) string {
 	u := url.URL{
 		Scheme:   "postgresql",
 		User:     url.UserPassword(username, password),
 		Host:     net.JoinHostPort(host, strconv.Itoa(int(port))),
 		Path:     "/" + database,
-		RawQuery: "sslmode=disable",
+		RawQuery: "sslmode=" + string(sslMode),
 	}
 	return u.String()
 }

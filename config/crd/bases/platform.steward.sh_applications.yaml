@@ -120,6 +120,23 @@ spec:
                     - large
                     - xlarge
                     type: string
+                  sslMode:
+                    default: require
+                    description: |-
+                      SSLMode is the sslmode written into the injected DATABASE_URL.
+
+                        - require (default): the connection is encrypted. The server
+                          certificate is not verified, so no CA has to be mounted in the pod.
+                        - disable: no TLS; the password and all data cross the pod network in
+                          cleartext. Only for clients that cannot connect otherwise, for
+                          example node-postgres, which treats "require" as full certificate
+                          verification and rejects the in-cluster CA.
+
+                      The PG* variables are not affected; libpq reads PGSSLMODE for those.
+                    enum:
+                    - require
+                    - disable
+                    type: string
                   type:
                     description: Type is the database engine (postgres, mysql).
                     enum:

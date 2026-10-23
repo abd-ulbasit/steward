@@ -390,6 +390,27 @@ var _ = Describe("Application Webhook", func() {
 			Expect(err.Error()).To(ContainSubstring("between 13 and 17"))
 			Expect(err.Error()).To(ContainSubstring("minReplicas"))
 		})
+
+		It("Should warn, not reject, when database TLS is turned off", func() {
+			obj.Spec.Database = &platformv1alpha1.DatabaseSpec{
+				Type:    platformv1alpha1.DatabasePostgres,
+				Version: "16",
+				SSLMode: platformv1alpha1.PostgresSSLModeDisable,
+			}
+			warnings, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(warnings).To(ContainElement(ContainSubstring("cleartext")))
+		})
+
+		It("Should not warn with the default sslMode", func() {
+			obj.Spec.Database = &platformv1alpha1.DatabaseSpec{
+				Type:    platformv1alpha1.DatabasePostgres,
+				Version: "16",
+			}
+			warnings, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(warnings).To(BeEmpty())
+		})
 	})
 
 	// =========================================================================

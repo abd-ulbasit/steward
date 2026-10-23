@@ -59,6 +59,26 @@ Unchanged from existing KubernetesProvider conventions:
 - Cache: `{app.Name}-cache-credentials`
 - Queue: `{app.Name}-queue-credentials`
 
+## Database TLS
+
+`DATABASE_URL` ends in `?sslmode=require`. CloudNativePG always serves TLS, so
+the connection is encrypted with nothing extra in the application pod.
+`require` does not verify the server certificate; `verify-full` would, but
+each application would have to mount the cluster CA (`<app>-db-ca`) first.
+
+Because derived keys are recomputed on every reconcile, Secrets created by
+earlier releases (which wrote `sslmode=disable`) are updated too. Running pods
+keep the old value until they restart.
+
+Clients that cannot connect with `require` can opt out per Application with
+`spec.database.sslMode: disable`. The webhook accepts it with a warning. The
+known case is node-postgres: its connection-string parser treats `require` as
+full certificate verification and rejects the in-cluster CA.
+
+`PGHOST`/`PGPORT`/... carry no sslmode. libpq then uses `PGSSLMODE`, or
+`prefer` when unset, which also negotiates TLS with CloudNativePG. Set
+`PGSSLMODE=require` in `spec.workload.env` to refuse a cleartext fallback.
+
 ## Where the plaintext lives
 
 Only in those three Secrets. The operators read the same Secrets instead of a

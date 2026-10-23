@@ -559,14 +559,28 @@ func validateApplication(app *platformv1alpha1.Application) (admission.Warnings,
 		}
 	}
 
+	// -------------------------------------------------------------------------
+	// WARNING: Database TLS turned off
+	// -------------------------------------------------------------------------
+	//
+	// sslMode: disable is a supported opt-out for clients that cannot use
+	// "require", so it is not an error. It is surfaced on every apply so the
+	// cleartext choice stays visible.
+	//
+	var warnings admission.Warnings
+	if app.Spec.Database != nil && app.Spec.Database.SSLMode == platformv1alpha1.PostgresSSLModeDisable {
+		warnings = append(warnings,
+			"spec.database.sslMode is disable: DATABASE_URL sends the password and all data in cleartext")
+	}
+
 	// Convert collected errors to a Kubernetes API error.
 	if len(allErrs) > 0 {
-		return nil, apierrors.NewInvalid(
+		return warnings, apierrors.NewInvalid(
 			platformv1alpha1.GroupVersion.WithKind("Application").GroupKind(),
 			app.Name,
 			allErrs,
 		)
 	}
 
-	return nil, nil
+	return warnings, nil
 }

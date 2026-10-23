@@ -159,8 +159,8 @@ running a real kube-apiserver and etcd, not a fake client):
 
 ```
 internal/webhook/v1alpha1   98.7%
-internal/controller         77.4%
-internal/provider           67.8%
+internal/controller         77.5%
+internal/provider           68.6%
 api/v1alpha1                 3.2%
 cmd                          0.0%
 test/utils                   0.0%
@@ -176,7 +176,7 @@ under `test/e2e`, neither has unit tests. `internal/provider` is the lowest
 number that reflects real risk: its error and capability paths run through
 `MockProvider` rather than against a live CNPG install.
 
-153 Ginkgo specs — most against envtest — plus 60 Go test functions, and a
+155 Ginkgo specs — most against envtest — plus 62 Go test functions, and a
 Kind-based e2e suite under `test/e2e`.
 
 ---

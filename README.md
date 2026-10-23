@@ -158,10 +158,10 @@ Test coverage — every package `make test` reports, unabridged (Ginkgo + envtes
 running a real kube-apiserver and etcd, not a fake client):
 
 ```
-internal/webhook/v1alpha1   98.5%
-internal/controller         75.2%
-internal/provider           62.6%
-api/v1alpha1                 3.5%
+internal/webhook/v1alpha1   98.7%
+internal/controller         77.4%
+internal/provider           67.8%
+api/v1alpha1                 3.2%
 cmd                          0.0%
 test/utils                   0.0%
 ```
@@ -176,7 +176,7 @@ under `test/e2e`, neither has unit tests. `internal/provider` is the lowest
 number that reflects real risk: its error and capability paths run through
 `MockProvider` rather than against a live CNPG install.
 
-128 Ginkgo specs — most against envtest — plus 43 Go test functions, and a
+153 Ginkgo specs — most against envtest — plus 60 Go test functions, and a
 Kind-based e2e suite under `test/e2e`.
 
 ---
@@ -267,7 +267,7 @@ decided the shape of this operator were not generated: the drift discriminator a
 the top of this README came from watching `CreateOrUpdate` report `Updated` for
 two situations that mean opposite things and working out that `observedGeneration`
 is the only thing that separates them, and the coverage table above still prints
-the 3.5% and the 0.0% with an explanation rather than a chart that flatters them.
+the 3.2% and the 0.0% with an explanation rather than a chart that flatters them.
 To judge the engineering rather than the tooling, read that section and
 [docs/DESIGN-DECISIONS.md](docs/DESIGN-DECISIONS.md).
 

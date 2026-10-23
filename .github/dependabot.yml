@@ -1,0 +1,44 @@
+# Dependabot keeps the three kinds of pinned dependency current:
+# Go modules (go.mod), the SHA-pinned GitHub Actions, and the digest-pinned
+# base images in the Dockerfile. The cooldown skips releases younger than a
+# week, so a hijacked release has time to be noticed and pulled before it is
+# proposed here.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      # k8s.io/* and controller-runtime move in lockstep (controller-runtime
+      # 0.23 pairs with k8s.io 0.35), so propose them together.
+      kubernetes:
+        patterns:
+          - k8s.io/*
+          - sigs.k8s.io/*
+      opentelemetry:
+        patterns:
+          - go.opentelemetry.io/*
+      golang-x:
+        patterns:
+          - golang.org/x/*
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns:
+          - '*'
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7

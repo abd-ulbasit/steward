@@ -197,6 +197,14 @@ func main() {
 		return p.WithUncachedReader(mgr.GetAPIReader()), nil
 	})
 
+	// Resolve the provider now rather than on the first reconcile, so a missing
+	// or invalid STEWARD_PROVIDER stops the pod (CrashLoopBackOff) instead of
+	// leaving a healthy-looking manager that fails every Application.
+	if _, err := providerFactory.GetProvider(); err != nil {
+		setupLog.Error(err, "unable to configure the infrastructure provider")
+		os.Exit(1)
+	}
+
 	discoveryClient, err := discovery.NewDiscoveryClientForConfig(mgr.GetConfig())
 	if err != nil {
 		setupLog.Error(err, "unable to create discovery client")

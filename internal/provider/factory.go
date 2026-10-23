@@ -17,12 +17,10 @@ limitations under the License.
 package provider
 
 import (
-	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sync"
-
-	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // =============================================================================
@@ -101,6 +99,11 @@ type Factory struct {
 	// This allows injecting custom providers for testing
 	providerConstructors map[ProviderType]ProviderConstructor
 }
+
+// ErrProviderNotSet is returned when STEWARD_PROVIDER is unset or empty.
+var ErrProviderNotSet = errors.New(
+	`STEWARD_PROVIDER is not set; set it to "kubernetes" to provision in-cluster ` +
+		`infrastructure, or to "mock" for local development (provisions nothing)`)
 
 // ProviderConstructor is a function that creates an InfrastructureProvider.
 // Used for dependency injection and testing.
@@ -267,22 +270,22 @@ func (f *Factory) createProvider(config *ProviderConfig) (InfrastructureProvider
 //   - Works in any deployment (K8s, docker-compose, bare metal)
 //   - No external dependencies
 //
-// DEFAULTS:
-//   - Provider: "mock" (safe for development)
-//   - This ensures the controller starts even without config
+// NO DEFAULT (FAIL CLOSED):
+//   STEWARD_PROVIDER must be set. It used to default to "mock", which meant a
+//   kustomize patch that dropped the variable produced an operator that
+//   reported Applications as provisioning and Ready while creating no
+//   database, cache or queue. An infrastructure operator that cannot tell
+//   which backend it drives should refuse to start, not pretend. Local runs
+//   opt into the mock explicitly (the Makefile's run target sets it).
 //
 // =============================================================================
 func (f *Factory) loadConfig() (*ProviderConfig, error) {
-	ctx := context.Background()
-	logger := log.FromContext(ctx)
-
 	config := &ProviderConfig{}
 
 	// Read provider type
 	providerStr := os.Getenv("STEWARD_PROVIDER")
 	if providerStr == "" {
-		providerStr = "mock" // Safe default
-		logger.Info("STEWARD_PROVIDER not set, defaulting to mock provider")
+		return nil, ErrProviderNotSet
 	}
 
 	switch providerStr {

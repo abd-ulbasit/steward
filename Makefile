@@ -121,9 +121,14 @@ lint-config: golangci-lint ## Verify golangci-lint linter configuration
 build: manifests generate fmt vet ## Build manager binary.
 	go build -o bin/manager cmd/main.go
 
+# The manager refuses to start without STEWARD_PROVIDER. Host runs default to
+# the mock provider, which provisions nothing; pass STEWARD_PROVIDER=kubernetes
+# to drive the CNPG/Redis/RabbitMQ operators in the current cluster.
+STEWARD_PROVIDER ?= mock
+
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
-	go run ./cmd/main.go
+	STEWARD_PROVIDER=$(STEWARD_PROVIDER) go run ./cmd/main.go
 
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.

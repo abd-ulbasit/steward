@@ -256,7 +256,7 @@ type ApplicationReconciler struct {
 	Recorder record.EventRecorder
 
 	// APIReader reads straight from the API server, bypassing the manager
-	// cache. The cache holds only Secrets labelled managed-by=steward
+	// cache. The cache holds only Secrets labeled managed-by=steward
 	// (provider.CacheOptions), so reconcileSecret uses this to tell "the
 	// Application's Secret does not exist" from "it exists but lost its
 	// label". Pass mgr.GetAPIReader(). Nil means the client already sees every
@@ -1828,7 +1828,7 @@ func (r *ApplicationReconciler) buildConfigMap(app *platformv1alpha1.Application
 // This prevents overwriting secrets that were populated by external systems
 // (like Terraform outputs, external-secrets operator, etc.)
 //
-// The manager cache only holds Secrets labelled managed-by=steward. A Secret
+// The manager cache only holds Secrets labeled managed-by=steward. A Secret
 // of this name without that label is invisible to the cached client, so
 // CreateOrUpdate would try to create it and fail with AlreadyExists on every
 // pass. restoreSecretLabels looks such a Secret up uncached first: if this

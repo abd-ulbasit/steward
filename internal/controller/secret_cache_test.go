@@ -147,13 +147,13 @@ var _ = Describe("Application Secret outside the label-scoped cache", func() {
 		Expect(secret.Labels).To(HaveKeyWithValue(provider.ManagedByLabel, provider.ManagedByValue))
 		Expect(metav1.IsControlledBy(&secret, app)).To(BeTrue())
 
-		// Labelled again, so later passes are served from the cache.
+		// Labeled again, so later passes are served from the cache.
 		Eventually(func() error {
 			return cached.Get(ctx, key(app), &corev1.Secret{})
 		}, timeout, interval).Should(Succeed())
 	})
 
-	It("refuses an unlabelled Secret it does not control", func() {
+	It("refuses an unlabeled Secret it does not control", func() {
 		app := newApp("foreign")
 		Expect(k8sClient.Create(ctx, &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{Name: app.Name, Namespace: ns},

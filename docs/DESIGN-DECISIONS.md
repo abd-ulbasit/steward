@@ -380,7 +380,11 @@ Stated plainly rather than left for a reviewer to find:
   PersistentVolumeClaim. The spec shape is ahead of the implementation and a
   cloud provider is what would close the gap.
 - **Credentials are plain Kubernetes Secrets.** No External Secrets Operator, no
-  CSI driver, no rotation.
+  CSI driver, no rotation. Derived keys such as `connectionString` follow the
+  stored password (§4), but nothing changes the password itself.
+- **The operator is a highly privileged identity, and Application authors can
+  read any Secret in their namespace through `env`/`envFrom`.** §7 records both
+  and the recommended fixes.
 - **One database per Application, not shareable.** A consequence of §1.
 - **`status.estimatedMonthlyCost` is defined but not populated** by the
   Kubernetes provider — the `CostEstimator` capability exists for a cloud
@@ -481,3 +485,50 @@ stop rolling out after an operator upgrade.
 **Consequence:** upgrading the operator changes every generated pod template
 once, so each Deployment rolls. Applications that read the ServiceAccount token
 must set the opt-out before upgrading.
+
+### `env` and `envFrom` can read any Secret in the namespace (design note)
+
+**Problem.** `spec.workload.env[].valueFrom.secretKeyRef` and
+`spec.workload.envFrom[].secretRef` are copied into the Deployment unchanged,
+and the Deployment runs `spec.workload.image`, which the Application's author
+chooses. The kubelet resolves those references with its own authority, not the
+author's. Anyone allowed to create or edit Applications in a namespace can
+therefore read every Secret in it — another Application's
+`<app>-db-credentials`, a TLS key, a CI token — by referencing it and running
+an image that prints its environment. Creating a Pod directly has the same
+property, but `application-editor-role` grants neither Pods nor Secrets, so
+steward silently turns "edit Applications" into "read Secrets". The webhook
+validates neither field today.
+
+**Options.**
+
+1. *Document it.* Treat `create applications` as equivalent to `create pods`
+   in RBAC reviews. No code; the gap stays.
+2. *Name or label allow-list in the webhook.* Accept only references to the
+   Application's own Secrets or to Secrets labelled, say,
+   `platform.steward.sh/consumable=true`. Cheap, but the label is set by
+   whoever can edit the Secret, and it breaks every existing `envFrom` of an
+   External Secrets or Sealed Secrets object until it is labelled.
+3. *SubjectAccessReview in the webhook.* For each referenced Secret, ask the
+   API server whether the requesting user (`admission.Request.UserInfo`) may
+   `get` it, and reject the request if not. The rule becomes "you can only
+   inject what you could read yourself". One SAR per newly referenced Secret
+   per admission; the manager needs `create` on
+   `subjectaccessreviews.authorization.k8s.io`.
+4. *ValidatingAdmissionPolicy.* The same check in CEL with the `authorizer`
+   library (`authorizer.group('').resource('secrets').namespace(...).name(...).check('get').allowed()`),
+   installed next to the CRD. No webhook code, but it needs Kubernetes 1.30+
+   and is harder to unit-test.
+
+**Recommendation.** Option 3. It closes the gap without a new labelling
+convention, the webhook and its unit tests already exist, and it keeps working
+when the platform team grants Secret access through ordinary RBAC. ConfigMap
+references can get the same check later; they are lower risk.
+
+**Migration.** Check only references that are new or changed compared with the
+old object, so an unrelated edit by a teammate does not fail on someone else's
+reference. Ship it first as admission warnings, then enforce it behind a
+manager flag, then make enforcement the default in the next minor release.
+Applications already in the cluster are not re-validated until edited; a
+one-off audit (`kubectl auth can-i get secret/<name> --as <author>`) finds
+existing cross-references. The reconcile loop does not change.

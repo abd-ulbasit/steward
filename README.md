@@ -214,7 +214,8 @@ Requires Go, Docker, `kubectl`, and `kind`.
 # Kind cluster + cert-manager + Prometheus Operator CRDs + CNPG + the Application CRD
 make dev-setup
 
-# Run the controller against the new cluster
+# Run the controller against the new cluster. STEWARD_PROVIDER defaults to
+# mock here, which provisions nothing; STEWARD_PROVIDER=kubernetes drives CNPG.
 make run
 ```
 
@@ -274,13 +275,15 @@ To judge the engineering rather than the tooling, read that section and
 
 - [docs/DESIGN-DECISIONS.md](docs/DESIGN-DECISIONS.md) — CRD schema rationale,
   idempotency strategy, drift model, ownership and finalizer semantics, partial
-  failure behaviour, known limits
+  failure behaviour, known limits, security boundaries
 - [docs/drift-detection.md](docs/drift-detection.md) — watch propagation,
   correction vs detection, false-positive avoidance
 - [docs/observability.md](docs/observability.md) — controller metrics vs
   generated application monitoring
 - [docs/credential-injection.md](docs/credential-injection.md) — injected
-  environment variables and precedence rules
+  environment variables, precedence rules, database TLS, where passwords live
+- [SECURITY.md](SECURITY.md) — reporting vulnerabilities, what CI scanning
+  catches and misses
 - [docs/dev-cluster-setup.md](docs/dev-cluster-setup.md) — local Kind setup
 
 ## Built with

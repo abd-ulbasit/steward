@@ -446,3 +446,30 @@ func TestDatabase_SSLModeDisableIsAnExplicitOptOut(t *testing.T) {
 		t.Errorf("connectionString = %q, want the opted-out sslmode=disable", conn)
 	}
 }
+
+func TestDatabase_ApplicationSecretIsNotTheSuperuserSecret(t *testing.T) {
+	ctx := context.Background()
+	provider, cl, _ := buildKubernetesProvider(t, cnpgOnlyDiscovery())
+	app := databaseApplication("roles", "uid-roles")
+
+	if _, err := provider.Provision(ctx, app); err != nil && !IsNotReady(err) {
+		t.Fatalf("Provision() error = %v", err)
+	}
+
+	cluster := &unstructured.Unstructured{}
+	cluster.SetGroupVersionKind(cnpgClusterGVK)
+	if err := cl.Get(ctx, client.ObjectKey{Name: "roles-db", Namespace: "default"}, cluster); err != nil {
+		t.Fatalf("get CNPG Cluster: %v", err)
+	}
+	if _, found, _ := unstructured.NestedMap(cluster.Object, "spec", "superuserSecret"); found {
+		t.Errorf("spec.superuserSecret is set; the application credentials must not double as superuser credentials")
+	}
+	enabled, found, _ := unstructured.NestedBool(cluster.Object, "spec", "enableSuperuserAccess")
+	if !found || enabled {
+		t.Errorf("spec.enableSuperuserAccess = %v (found=%v), want explicit false", enabled, found)
+	}
+	initdbSecret, _, _ := unstructured.NestedString(cluster.Object, "spec", "bootstrap", "initdb", "secret", "name")
+	if initdbSecret != "roles-db-credentials" {
+		t.Errorf("bootstrap.initdb.secret.name = %q, want roles-db-credentials", initdbSecret)
+	}
+}

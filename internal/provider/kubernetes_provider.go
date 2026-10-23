@@ -564,9 +564,14 @@ func (p *KubernetesProvider) reconcileDatabase(ctx context.Context, app *platfor
 					},
 				},
 			},
-			"superuserSecret": map[string]interface{}{
-				"name": secretName,
-			},
+			// The application role owns its database and nothing else. The
+			// postgres superuser keeps a NULL password (CNPG's default), and
+			// superuserSecret is left unset: pointing it at the application
+			// Secret, as earlier releases did, would make the application
+			// password the superuser password the moment someone turned
+			// superuser access on. If that is ever needed, CNPG generates a
+			// separate <cluster>-superuser Secret.
+			"enableSuperuserAccess": false,
 		}
 
 		if storageClass != "" {

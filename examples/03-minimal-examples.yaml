@@ -24,7 +24,8 @@ spec:
   owner: demo@example.com
   
   workload:
-    image: nginx:latest
+    # Pinned by digest: a tag can be moved to different content, a digest cannot.
+    image: nginx:1.30-alpine@sha256:47928bf67eb62a1863cb08d9ecb52d3e704304ba614eaee17884204677702951
 
 ---
 # =============================================================================

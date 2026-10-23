@@ -347,7 +347,9 @@ type ApplicationSpec struct {
 // WorkloadSpec defines the container workload configuration.
 type WorkloadSpec struct {
 	// Image is the container image to run.
-	// Examples: ghcr.io/company/app:v1.0.0, nginx:latest
+	// Examples: ghcr.io/company/app:v1.0.0, or pinned by digest
+	// ghcr.io/company/app:v1.0.0@sha256:<digest>. Avoid mutable tags such as
+	// latest: the same spec can then roll out different code.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	Image string `json:"image"`

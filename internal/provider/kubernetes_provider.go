@@ -148,7 +148,7 @@ type KubernetesProvider struct {
 
 	// uncached reads Secrets straight from the API server. It is only used
 	// when the cached client cannot see a Secret, because the manager cache
-	// holds labelled Secrets only (see CacheOptions). Nil means "the client
+	// holds labeled Secrets only (see CacheOptions). Nil means "the client
 	// already sees everything", which is the case for tests and the CLI.
 	uncached client.Reader
 }
@@ -1375,7 +1375,7 @@ func (p *KubernetesProvider) buildLabels(app *platformv1alpha1.Application) map[
 // A Secret that already exists under that name is only taken over when it is
 // provably ours: either it is controlled by this Application, or it is an
 // orphan left by an older steward release that did not set owner references.
-// The second case is recognised by the component's operator CR already
+// The second case is recognized by the component's operator CR already
 // existing and being controlled by this Application. Anything else is refused,
 // so a Secret planted ahead of the Application cannot choose the database
 // password.
@@ -1533,7 +1533,7 @@ func (p *KubernetesProvider) checkSecretAdoptable(
 
 // getSecret reads a Secret and reports whether it exists.
 //
-// The cached client only sees Secrets labelled managed-by=steward. A
+// The cached client only sees Secrets labeled managed-by=steward. A
 // credential Secret from an older release, or one whose labels someone
 // removed, is invisible to it; treating that as "not found" would make every
 // reconcile fail on Create with AlreadyExists. So a cache miss is confirmed

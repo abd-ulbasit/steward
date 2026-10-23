@@ -270,13 +270,12 @@ func (f *Factory) createProvider(config *ProviderConfig) (InfrastructureProvider
 //   - Works in any deployment (K8s, docker-compose, bare metal)
 //   - No external dependencies
 //
-// NO DEFAULT (FAIL CLOSED):
-//   STEWARD_PROVIDER must be set. It used to default to "mock", which meant a
-//   kustomize patch that dropped the variable produced an operator that
-//   reported Applications as provisioning and Ready while creating no
-//   database, cache or queue. An infrastructure operator that cannot tell
-//   which backend it drives should refuse to start, not pretend. Local runs
-//   opt into the mock explicitly (the Makefile's run target sets it).
+// NO DEFAULT (FAIL CLOSED): STEWARD_PROVIDER must be set. It used to default
+// to "mock", which meant a kustomize patch that dropped the variable produced
+// an operator that reported Applications as provisioning and Ready while
+// creating no database, cache or queue. An infrastructure operator that
+// cannot tell which backend it drives should refuse to start, not pretend.
+// Local runs opt into the mock explicitly (the Makefile run target sets it).
 //
 // =============================================================================
 func (f *Factory) loadConfig() (*ProviderConfig, error) {

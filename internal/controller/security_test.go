@@ -87,7 +87,7 @@ var _ = Describe("workload security defaults", func() {
 		Expect(c.SecurityContext.ReadOnlyRootFilesystem).To(Equal(ptr.To(true)))
 	})
 
-	It("honours the baseline opt-outs", func() {
+	It("honors the baseline opt-outs", func() {
 		d := build(&platformv1alpha1.WorkloadSecuritySpec{
 			AllowPrivilegeEscalation:     ptr.To(true),
 			AutomountServiceAccountToken: ptr.To(true),

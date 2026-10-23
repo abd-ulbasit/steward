@@ -76,7 +76,7 @@ func getSecretData(t *testing.T, cl client.Client, name string) *corev1.Secret {
 	return secret
 }
 
-func TestCredentialSecrets_AreLabelledAndControlledByApplication(t *testing.T) {
+func TestCredentialSecrets_AreLabeledAndControlledByApplication(t *testing.T) {
 	provider, cl, _ := buildKubernetesProvider(t, &fakeDiscovery{
 		resources: map[string][]metav1.APIResource{
 			cnpgClusterGVK.GroupVersion().String():     {{Name: "clusters", Kind: cnpgClusterGVK.Kind}},

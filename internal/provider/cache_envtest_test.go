@@ -68,7 +68,7 @@ func TestEnvtest_SecretCacheHoldsOnlyStewardSecrets(t *testing.T) {
 
 	err := cached.Get(ctx, client.ObjectKey{Name: "someone-elses-tls", Namespace: "default"}, &corev1.Secret{})
 	if !apierrors.IsNotFound(err) {
-		t.Fatalf("unlabelled Secret is visible through the cache (err = %v)", err)
+		t.Fatalf("unlabeled Secret is visible through the cache (err = %v)", err)
 	}
 }
 
@@ -142,10 +142,10 @@ func TestEnvtest_LegacyCredentialSecretIsAdoptedDespiteCacheScope(t *testing.T) 
 		t.Fatalf("password was replaced during adoption")
 	}
 	if !metav1.IsControlledBy(secret, app) || secret.Labels[ManagedByLabel] != ManagedByValue {
-		t.Fatalf("Secret was not labelled and owned: labels=%v owners=%v", secret.Labels, secret.OwnerReferences)
+		t.Fatalf("Secret was not labeled and owned: labels=%v owners=%v", secret.Labels, secret.OwnerReferences)
 	}
 
-	// Labelled now, so the next reconcile is served from the cache.
+	// Labeled now, so the next reconcile is served from the cache.
 	waitForCached(ctx, t, cached, "legacy-db-credentials")
 }
 

@@ -167,7 +167,7 @@ test/utils                   0.0%
 ```
 
 The low ones need explaining rather than hiding. `api/v1alpha1` is dominated by
-650 lines of generated `zz_generated.deepcopy.go`; the hand-written part is
+700 lines of generated `zz_generated.deepcopy.go`; the hand-written part is
 `conditions.go`, which is at 100% (`conditions_test.go`) and is the part that
 matters — the reconciler skips its status write when those helpers report no
 change, so a bug there turns the 5-minute resync into a write per Application per

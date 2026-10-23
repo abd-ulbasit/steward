@@ -1,6 +1,21 @@
-# This NetworkPolicy allows ingress traffic to your webhook server running
-# as part of the controller-manager from specific namespaces and pods. CR(s) which uses webhooks
-# will only work when applied in namespaces labeled with 'webhook: enabled'
+# This NetworkPolicy allows the Kubernetes API server to reach the admission
+# webhook server running in the controller-manager pod.
+#
+# Port: NetworkPolicy matches the port on the pod, after the Service has
+# translated it. The webhook Service listens on 443 but targets the container
+# port 9443 (config/webhook/service.yaml, config/default/manager_webhook_patch.yaml),
+# so 9443 is the port to allow. Allowing 443 matched nothing.
+#
+# Source: admission requests come from the API server, which on most clusters
+# runs on the control-plane hosts (or outside the cluster on managed services),
+# not in a Pod in a labelled namespace, so a namespaceSelector cannot match it.
+# The rule therefore admits any source, but only on the webhook port. Every
+# other port on the manager stays closed by this policy and allow-metrics-traffic.
+# If the API server's source addresses are known and stable, replace `from` with
+# an ipBlock for them.
+#
+# The webhooks use failurePolicy: Fail, so a policy that blocks this traffic
+# blocks every create and update of an Application.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -17,11 +32,6 @@ spec:
   policyTypes:
     - Ingress
   ingress:
-    # This allows ingress traffic from any namespace with the label webhook: enabled
-    - from:
-      - namespaceSelector:
-          matchLabels:
-            webhook: enabled # Only from namespaces with this label
-      ports:
-        - port: 443
+    - ports:
+        - port: 9443
           protocol: TCP

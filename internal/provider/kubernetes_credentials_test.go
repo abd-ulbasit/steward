@@ -431,6 +431,27 @@ func TestDatabase_ExistingConnectionStringIsUpgradedToTLS(t *testing.T) {
 	}
 }
 
+func TestChangedKeys_NamesOnlyTheKeysThatDiffer(t *testing.T) {
+	before := map[string][]byte{
+		"password":         []byte("same"),
+		"connectionString": []byte("postgresql://u:p@h:5432/d?sslmode=disable"),
+		"stale":            []byte("x"),
+	}
+	after := map[string][]byte{
+		"password":         []byte("same"),
+		"connectionString": []byte("postgresql://u:p@h:5432/d?sslmode=require"),
+		"host":             []byte("h"),
+	}
+	got := changedKeys(before, after)
+	want := []string{"connectionString", "host", "stale"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("changedKeys() = %v, want %v", got, want)
+	}
+	if got := changedKeys(after, after); len(got) != 0 {
+		t.Errorf("changedKeys() on identical data = %v, want none", got)
+	}
+}
+
 func TestDatabase_SSLModeDisableIsAnExplicitOptOut(t *testing.T) {
 	ctx := context.Background()
 	provider, cl, _ := buildKubernetesProvider(t, cnpgOnlyDiscovery())

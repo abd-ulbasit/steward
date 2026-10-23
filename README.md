@@ -181,6 +181,45 @@ Kind-based e2e suite under `test/e2e`.
 
 ---
 
+## Upgrading from a release before the October 2026 security fixes
+
+This is not a drop-in upgrade. The first reconcile after the new manager
+starts changes running workloads:
+
+- Every generated Deployment rolls once, because every pod template gains
+  `seccompProfile: RuntimeDefault`, `allowPrivilegeEscalation: false` and
+  `automountServiceAccountToken: false`.
+- `DATABASE_URL` in every `<app>-db-credentials` Secret changes from
+  `sslmode=disable` to `sslmode=require`, and the pods started by that roll
+  read the new value straight away.
+- Each `RabbitmqCluster` moves to `spec.secretBackend.externalSecret`, and the
+  broker pods roll once.
+- The manager exits at startup if `STEWARD_PROVIDER` is unset.
+  `config/default` sets it to `kubernetes`; custom deployments must set it.
+
+Do this before you deploy the new manager:
+
+1. Apply the new CRD while the old manager is still running (`make install`,
+   or `kubectl apply -f config/crd/bases/`). The opt-outs below do not exist
+   in the old CRD, and the API server would silently drop them.
+2. Set the opt-outs each Application needs:
+
+   | If the Application... | Set before upgrading | Otherwise |
+   |---|---|---|
+   | connects to Postgres with node-postgres (`pg`, Sequelize, TypeORM, Knex) from `DATABASE_URL` | `spec.database.sslMode: disable` | it loses its database as soon as its pod rolls |
+   | calls the Kubernetes API with its ServiceAccount token | `spec.workload.security.automountServiceAccountToken: true` | it starts without a token |
+   | runs setuid binaries such as `sudo` | `spec.workload.security.allowPrivilegeEscalation: true` | those binaries fail |
+   | has a `queue:` block | RabbitMQ Cluster Operator v2.1.0 or later in the cluster | the Application fails with `InfrastructureInvalid` |
+
+3. Deploy the new manager.
+
+[docs/credential-injection.md](docs/credential-injection.md#upgrading-node-postgres-applications)
+has the node-postgres detail and how to move those applications to TLS later;
+[docs/DESIGN-DECISIONS.md](docs/DESIGN-DECISIONS.md) section 7 has the pod
+hardening.
+
+---
+
 ## Renamed from `goplatform` — breaking API group change
 
 This project was called `goplatform` until 2026-07-27. The repository is now

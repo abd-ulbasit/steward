@@ -65,12 +65,14 @@ limitations under the License.
 package provider
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
 	"net"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -1465,8 +1467,34 @@ func (p *KubernetesProvider) ensureCredentialSecret(
 		if err := p.client.Update(ctx, secret); err != nil {
 			return nil, err
 		}
+		// A rewritten key reaches pods only when they restart, and the first
+		// reconcile after an upgrade can rewrite every connectionString (the
+		// sslmode change). Log which keys changed, never their values, so
+		// that a client failing after its next restart can be traced here.
+		if changed := changedKeys(before.Data, secret.Data); len(changed) > 0 {
+			log.FromContext(ctx).Info("updated credential Secret; running pods keep the old values until they restart",
+				"secret", spec.name, "namespace", ns, "keys", changed)
+		}
 	}
 	return secret.Data, nil
+}
+
+// changedKeys returns, sorted, the keys whose values differ between before
+// and after, including keys present in only one of them.
+func changedKeys(before, after map[string][]byte) []string {
+	var keys []string
+	for k, v := range after {
+		if old, ok := before[k]; !ok || !bytes.Equal(old, v) {
+			keys = append(keys, k)
+		}
+	}
+	for k := range before {
+		if _, ok := after[k]; !ok {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // applyCredentialSecret fills missing generated keys, recomputes derived keys,

@@ -67,17 +67,55 @@ the connection is encrypted with nothing extra in the application pod.
 each application would have to mount the cluster CA (`<app>-db-ca`) first.
 
 Because derived keys are recomputed on every reconcile, Secrets created by
-earlier releases (which wrote `sslmode=disable`) are updated too. Running pods
-keep the old value until they restart.
+earlier releases (which wrote `sslmode=disable`) are updated too. The manager
+logs `updated credential Secret` with the Secret name and the changed key
+names (never the values) when that happens.
 
 Clients that cannot connect with `require` can opt out per Application with
 `spec.database.sslMode: disable`. The webhook accepts it with a warning. The
-known case is node-postgres: its connection-string parser treats `require` as
-full certificate verification and rejects the in-cluster CA.
+known case is node-postgres (`pg`), and everything built on it: Sequelize,
+TypeORM's Postgres driver, Knex. Its connection-string parser treats
+`require` as full certificate verification and rejects the CloudNativePG CA,
+which is self-signed. See [Upgrading](#upgrading-node-postgres-applications)
+below: on an upgrade the opt-out has to be in place first.
 
 `PGHOST`/`PGPORT`/... carry no sslmode. libpq then uses `PGSSLMODE`, or
 `prefer` when unset, which also negotiates TLS with CloudNativePG. Set
 `PGSSLMODE=require` in `spec.workload.env` to refuse a cleartext fallback.
+
+### Upgrading node-postgres applications
+
+Upgrading steward from a release that wrote `sslmode=disable` breaks
+node-postgres applications at once, not at some later restart:
+
+1. On its first reconcile the new manager rewrites `connectionString` in every
+   `<app>-db-credentials` Secret to `sslmode=require`.
+2. In the same pass it adds the baseline pod hardening to every generated pod
+   template (see `docs/DESIGN-DECISIONS.md` section 7), so every Deployment
+   rolls.
+3. The new pods read `DATABASE_URL` with `sslmode=require`, node-postgres
+   refuses the CloudNativePG certificate, and the application loses its
+   database.
+
+So, for each Application whose code connects with node-postgres from
+`DATABASE_URL`, do this **before** the new manager starts:
+
+1. Apply the new CRD first (`make install`, or `kubectl apply -f
+   config/crd/bases/`). The field below does not exist in the old CRD, and the
+   API server would silently drop it. The old manager keeps working with the
+   new CRD; the new fields are optional and it ignores them.
+2. Set `spec.database.sslMode: disable` on the Application. The old manager
+   still writes `sslmode=disable`, so nothing changes yet.
+3. Deploy the new manager. The rewritten `DATABASE_URL` keeps
+   `sslmode=disable` for these Applications.
+
+That keeps the connection unencrypted, as it was before the upgrade. To move
+such an application to TLS afterwards, change the client rather than the
+URL: connect with the `PG*` variables instead of `DATABASE_URL` (`new
+pg.Client()` with no `connectionString` reads them) and set
+`PGSSLMODE=no-verify` in `spec.workload.env`, which node-postgres maps to an
+encrypted connection without certificate verification. Then remove
+`sslMode: disable`.
 
 ## Where the plaintext lives
 

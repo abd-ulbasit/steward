@@ -24,7 +24,8 @@ spec:
   owner: demo@example.com
   
   workload:
-    image: nginx:latest
+    # Pinned by digest: a tag can be moved to different content, a digest cannot.
+    image: nginx:1.30-alpine@sha256:47928bf67eb62a1863cb08d9ecb52d3e704304ba614eaee17884204677702951
 
 ---
 # =============================================================================
@@ -191,3 +192,31 @@ spec:
     deadLetterQueue:
       enabled: true
       maxReceiveCount: 3
+
+---
+# =============================================================================
+# EXAMPLE 6: Hardened Workload (restricted Pod Security Standard)
+# =============================================================================
+# Every Deployment gets seccomp RuntimeDefault, allowPrivilegeEscalation:
+# false and no ServiceAccount token by default. profile: restricted adds
+# runAsNonRoot and drops all capabilities, which is what a namespace labelled
+# pod-security.kubernetes.io/enforce=restricted requires. The image must run as
+# a non-root UID: nginx-unprivileged runs as UID 101 and listens on 8080.
+
+apiVersion: platform.steward.sh/v1alpha1
+kind: Application
+metadata:
+  name: hardened-web
+  namespace: default
+spec:
+  team: demo
+  owner: demo@example.com
+
+  workload:
+    image: nginxinc/nginx-unprivileged:1.30-alpine@sha256:f5116ed4606f3eb015dd4a8e28cb9b351476dc0ad4bc6e9f93b19cec130cdf03
+    ports:
+      - name: http
+        containerPort: 8080
+    security:
+      profile: restricted
+      runAsUser: 101

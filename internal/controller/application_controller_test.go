@@ -541,7 +541,7 @@ var _ = Describe("Application Controller", func() {
 
 		It("should set database condition to ready when provider reports ready", func() {
 			// createReconciler() has no ProviderFactory, so getProvider()
-			// creates a default Factory → loads env (defaults to "mock") →
+			// creates a default Factory → loads env (the suite sets "mock") →
 			// creates MockProvider with delay=0 → Provision returns Ready immediately.
 			reconciler := createReconciler()
 

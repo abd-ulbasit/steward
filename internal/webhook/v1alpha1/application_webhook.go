@@ -559,14 +559,56 @@ func validateApplication(app *platformv1alpha1.Application) (admission.Warnings,
 		}
 	}
 
+	// -------------------------------------------------------------------------
+	// RULE 6: The restricted security profile cannot be half-applied
+	// -------------------------------------------------------------------------
+	//
+	// WHY THIS CHECK:
+	//   profile: restricted promises the Kubernetes "restricted" Pod Security
+	//   Standard. allowPrivilegeEscalation: true contradicts it, and
+	//   runAsUser: 0 together with the runAsNonRoot it implies makes the
+	//   kubelet refuse to start the container. Both are mistakes better caught
+	//   on apply than as a stuck rollout.
+	//
+	if wl := app.Spec.Workload; wl != nil && wl.Security != nil &&
+		wl.Security.Profile == platformv1alpha1.SecurityProfileRestricted {
+		securityPath := field.NewPath("spec", "workload", "security")
+		if wl.Security.AllowPrivilegeEscalation != nil && *wl.Security.AllowPrivilegeEscalation {
+			allErrs = append(allErrs, field.Forbidden(
+				securityPath.Child("allowPrivilegeEscalation"),
+				"cannot be true with profile restricted; use profile baseline for images that need setuid binaries",
+			))
+		}
+		if wl.Security.RunAsUser != nil && *wl.Security.RunAsUser == 0 {
+			allErrs = append(allErrs, field.Forbidden(
+				securityPath.Child("runAsUser"),
+				"cannot be 0 with profile restricted, which requires a non-root user",
+			))
+		}
+	}
+
+	// -------------------------------------------------------------------------
+	// WARNING: Database TLS turned off
+	// -------------------------------------------------------------------------
+	//
+	// sslMode: disable is a supported opt-out for clients that cannot use
+	// "require", so it is not an error. It is surfaced on every apply so the
+	// cleartext choice stays visible.
+	//
+	var warnings admission.Warnings
+	if app.Spec.Database != nil && app.Spec.Database.SSLMode == platformv1alpha1.PostgresSSLModeDisable {
+		warnings = append(warnings,
+			"spec.database.sslMode is disable: DATABASE_URL sends the password and all data in cleartext")
+	}
+
 	// Convert collected errors to a Kubernetes API error.
 	if len(allErrs) > 0 {
-		return nil, apierrors.NewInvalid(
+		return warnings, apierrors.NewInvalid(
 			platformv1alpha1.GroupVersion.WithKind("Application").GroupKind(),
 			app.Name,
 			allErrs,
 		)
 	}
 
-	return nil, nil
+	return warnings, nil
 }

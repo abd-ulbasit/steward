@@ -51,6 +51,11 @@ var (
 func TestControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
 
+	// STEWARD_PROVIDER has no default (the factory fails closed). Reconcilers
+	// built without a ProviderFactory load it from the environment, so pick
+	// the mock explicitly, as a local `make run` does.
+	t.Setenv("STEWARD_PROVIDER", "mock")
+
 	RunSpecs(t, "Controller Suite")
 }
 

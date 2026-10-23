@@ -390,6 +390,69 @@ var _ = Describe("Application Webhook", func() {
 			Expect(err.Error()).To(ContainSubstring("between 13 and 17"))
 			Expect(err.Error()).To(ContainSubstring("minReplicas"))
 		})
+
+		It("Should warn, not reject, when database TLS is turned off", func() {
+			obj.Spec.Database = &platformv1alpha1.DatabaseSpec{
+				Type:    platformv1alpha1.DatabasePostgres,
+				Version: "16",
+				SSLMode: platformv1alpha1.PostgresSSLModeDisable,
+			}
+			warnings, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(warnings).To(ContainElement(ContainSubstring("cleartext")))
+		})
+
+		It("Should reject privilege escalation under the restricted profile", func() {
+			allow := true
+			obj.Spec.Workload = &platformv1alpha1.WorkloadSpec{
+				Image: "ghcr.io/example/app:v1",
+				Security: &platformv1alpha1.WorkloadSecuritySpec{
+					Profile:                  platformv1alpha1.SecurityProfileRestricted,
+					AllowPrivilegeEscalation: &allow,
+				},
+			}
+			_, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("allowPrivilegeEscalation"))
+		})
+
+		It("Should reject runAsUser 0 under the restricted profile", func() {
+			root := int64(0)
+			obj.Spec.Workload = &platformv1alpha1.WorkloadSpec{
+				Image: "ghcr.io/example/app:v1",
+				Security: &platformv1alpha1.WorkloadSecuritySpec{
+					Profile:   platformv1alpha1.SecurityProfileRestricted,
+					RunAsUser: &root,
+				},
+			}
+			_, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("runAsUser"))
+		})
+
+		It("Should accept the baseline opt-outs", func() {
+			allow := true
+			obj.Spec.Workload = &platformv1alpha1.WorkloadSpec{
+				Image: "ghcr.io/example/app:v1",
+				Security: &platformv1alpha1.WorkloadSecuritySpec{
+					Profile:                      platformv1alpha1.SecurityProfileBaseline,
+					AllowPrivilegeEscalation:     &allow,
+					AutomountServiceAccountToken: &allow,
+				},
+			}
+			_, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("Should not warn with the default sslMode", func() {
+			obj.Spec.Database = &platformv1alpha1.DatabaseSpec{
+				Type:    platformv1alpha1.DatabasePostgres,
+				Version: "16",
+			}
+			warnings, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(warnings).To(BeEmpty())
+		})
 	})
 
 	// =========================================================================

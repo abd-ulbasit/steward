@@ -142,6 +142,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"regexp"
@@ -253,6 +254,14 @@ type ApplicationReconciler struct {
 	//   - Prometheus Operator: Events for config reloads, errors
 	// =========================================================================
 	Recorder record.EventRecorder
+
+	// APIReader reads straight from the API server, bypassing the manager
+	// cache. The cache holds only Secrets labeled managed-by=steward
+	// (provider.CacheOptions), so reconcileSecret uses this to tell "the
+	// Application's Secret does not exist" from "it exists but lost its
+	// label". Pass mgr.GetAPIReader(). Nil means the client already sees every
+	// Secret, which is the case in tests that use a direct client.
+	APIReader client.Reader
 
 	// CleanupExternalResources is an optional hook for deleting external
 	// infrastructure (Terraform, cloud resources, etc.) during finalization.
@@ -578,7 +587,11 @@ func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Reconcile Secret
 	if _, err := r.reconcileSecret(ctx, &app, dt); err != nil {
 		logger.Error(err, "failed to reconcile secret")
-		r.setFailedCondition(ctx, &app, "SecretFailed", err.Error())
+		reason := "SecretFailed"
+		if errors.Is(err, errSecretNotOwned) {
+			reason = "SecretConflict"
+		}
+		r.setFailedCondition(ctx, &app, reason, err.Error())
 		return ctrl.Result{RequeueAfter: requeueAfterError}, nil
 	}
 
@@ -1402,16 +1415,21 @@ func (r *ApplicationReconciler) buildDeployment(app *platformv1alpha1.Applicatio
 		resources = *app.Spec.Workload.Resources
 	}
 
+	// Security settings: baseline defaults unless the spec asks for more or
+	// opts out. See workloadSecurity.
+	podSecurity, containerSecurity, automountToken := workloadSecurity(app)
+
 	// Build the container
 	container := corev1.Container{
-		Name:           "app",
-		Image:          app.Spec.Workload.Image,
-		Ports:          containerPorts,
-		Resources:      resources,
-		Env:            env,
-		EnvFrom:        app.Spec.Workload.EnvFrom,
-		LivenessProbe:  livenessProbe,
-		ReadinessProbe: readinessProbe,
+		Name:            "app",
+		Image:           app.Spec.Workload.Image,
+		Ports:           containerPorts,
+		Resources:       resources,
+		Env:             env,
+		EnvFrom:         app.Spec.Workload.EnvFrom,
+		LivenessProbe:   livenessProbe,
+		ReadinessProbe:  readinessProbe,
+		SecurityContext: containerSecurity,
 	}
 
 	if len(app.Spec.Workload.Command) > 0 {
@@ -1440,7 +1458,9 @@ func (r *ApplicationReconciler) buildDeployment(app *platformv1alpha1.Applicatio
 					Labels: labels,
 				},
 				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{container},
+					Containers:                   []corev1.Container{container},
+					SecurityContext:              podSecurity,
+					AutomountServiceAccountToken: automountToken,
 				},
 			},
 		},
@@ -1808,7 +1828,18 @@ func (r *ApplicationReconciler) buildConfigMap(app *platformv1alpha1.Application
 // This prevents overwriting secrets that were populated by external systems
 // (like Terraform outputs, external-secrets operator, etc.)
 //
+// The manager cache only holds Secrets labeled managed-by=steward. A Secret
+// of this name without that label is invisible to the cached client, so
+// CreateOrUpdate would try to create it and fail with AlreadyExists on every
+// pass. restoreSecretLabels looks such a Secret up uncached first: if this
+// Application controls it, the labels are put back; otherwise the reconcile
+// fails with errSecretNotOwned instead of taking over someone else's Secret.
+//
 // =============================================================================
+
+// errSecretNotOwned reports that a Secret with the Application's name exists
+// but is not controlled by the Application.
+var errSecretNotOwned = errors.New("secret is not controlled by this Application")
 
 func (r *ApplicationReconciler) reconcileSecret(ctx context.Context, app *platformv1alpha1.Application, dt *driftTracker) (bool, error) {
 	logger := log.FromContext(ctx)
@@ -1817,6 +1848,16 @@ func (r *ApplicationReconciler) reconcileSecret(ctx context.Context, app *platfo
 
 	if err := controllerutil.SetControllerReference(app, desired, r.Scheme); err != nil {
 		return false, fmt.Errorf("failed to set owner reference: %w", err)
+	}
+
+	restored, err := r.restoreSecretLabels(ctx, app, desired.Labels)
+	if err != nil {
+		return false, err
+	}
+	if restored {
+		logger.Info("restored labels on secret", "secret", app.Name)
+		dt.record("Secret", true, "labels restored")
+		return true, nil
 	}
 
 	secret := &corev1.Secret{
@@ -1850,6 +1891,46 @@ func (r *ApplicationReconciler) reconcileSecret(ctx context.Context, app *platfo
 	secretDrifted, secretDetail := recoveredOrChanged(opResult)
 	dt.record("Secret", secretDrifted, secretDetail)
 
+	return true, nil
+}
+
+// restoreSecretLabels handles an Application Secret that exists but is not
+// in the label-filtered cache. It reports true when it put the labels back on
+// a Secret this Application controls, and returns errSecretNotOwned for a
+// Secret it does not control. It reports false, nil when there is nothing to
+// do: the Secret is cached, absent, or APIReader is not set.
+func (r *ApplicationReconciler) restoreSecretLabels(
+	ctx context.Context,
+	app *platformv1alpha1.Application,
+	labels map[string]string,
+) (bool, error) {
+	if r.APIReader == nil {
+		return false, nil
+	}
+	key := client.ObjectKey{Name: app.Name, Namespace: app.Namespace}
+	if err := r.Get(ctx, key, &corev1.Secret{}); !apierrors.IsNotFound(err) {
+		// Cached, so CreateOrUpdate handles it; any other error surfaces
+		// from CreateOrUpdate's own read.
+		return false, nil
+	}
+
+	existing := &corev1.Secret{}
+	if err := r.APIReader.Get(ctx, key, existing); err != nil {
+		if apierrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to read secret: %w", err)
+	}
+
+	if !metav1.IsControlledBy(existing, app) {
+		return false, fmt.Errorf("%w: Secret %s/%s already exists and steward will not take it over; "+
+			"rename or delete it", errSecretNotOwned, key.Namespace, key.Name)
+	}
+
+	existing.Labels = labels
+	if err := r.Update(ctx, existing); err != nil {
+		return false, fmt.Errorf("failed to restore labels on secret: %w", err)
+	}
 	return true, nil
 }
 

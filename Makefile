@@ -57,6 +57,19 @@ fmt: ## Run go fmt against code.
 vet: ## Run go vet against code.
 	go vet ./...
 
+# CI runs this instead of mutating inputs before the tests: it regenerates
+# CRDs, RBAC, webhook manifests and deepcopy code, formats, tidies go.mod, and
+# fails if anything differs from what is committed.
+.PHONY: verify-generated
+verify-generated: manifests generate fmt ## Fail if generated files, formatting or go.mod/go.sum are stale.
+	go mod tidy
+	@if [ -n "$$(git status --porcelain)" ]; then \
+		echo "Generated files are out of date. Run make manifests generate fmt and go mod tidy, then commit:"; \
+		git status --porcelain; \
+		git --no-pager diff --stat; \
+		exit 1; \
+	fi
+
 # KUBEBUILDER_ASSETS must be ABSOLUTE. 'setup-envtest -p path' echoes the path
 # in the same form as --bin-dir, so a relative LOCALBIN (LOCALBIN=bin, or an
 # environment that exports it) yields 'bin/k8s/<ver>'. envtest resolves that
@@ -121,9 +134,14 @@ lint-config: golangci-lint ## Verify golangci-lint linter configuration
 build: manifests generate fmt vet ## Build manager binary.
 	go build -o bin/manager cmd/main.go
 
+# The manager refuses to start without STEWARD_PROVIDER. Host runs default to
+# the mock provider, which provisions nothing; pass STEWARD_PROVIDER=kubernetes
+# to drive the CNPG/Redis/RabbitMQ operators in the current cluster.
+STEWARD_PROVIDER ?= mock
+
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
-	go run ./cmd/main.go
+	STEWARD_PROVIDER=$(STEWARD_PROVIDER) go run ./cmd/main.go
 
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
@@ -141,17 +159,15 @@ docker-push: ## Push docker image with the manager.
 # - be able to use docker buildx. More info: https://docs.docker.com/build/buildx/
 # - have enabled BuildKit. More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 # - be able to push the image to your registry (i.e. if you do not set a valid value via IMG=<myregistry/image:<tag>> then the export will fail)
-# To adequately provide solutions that are compatible with multiple platforms, you should consider using this option.
+# The Dockerfile already builds on $BUILDPLATFORM and cross-compiles with GOARCH=$TARGETARCH, so no
+# rewritten Dockerfile.cross and no QEMU emulation are needed.
 PLATFORMS ?= linux/arm64,linux/amd64,linux/s390x,linux/ppc64le
 .PHONY: docker-buildx
 docker-buildx: ## Build and push docker image for the manager for cross-platform support
-	# copy existing Dockerfile and insert --platform=${BUILDPLATFORM} into Dockerfile.cross, and preserve the original Dockerfile
-	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
 	- $(CONTAINER_TOOL) buildx create --name steward-builder
 	$(CONTAINER_TOOL) buildx use steward-builder
-	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${IMG} -f Dockerfile.cross .
+	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${IMG} .
 	- $(CONTAINER_TOOL) buildx rm steward-builder
-	rm Dockerfile.cross
 
 .PHONY: build-installer
 build-installer: manifests generate kustomize ## Generate a consolidated YAML with CRDs and deployment.
@@ -296,7 +312,7 @@ ENVTEST_K8S_VERSION ?= $(shell v='$(call gomodver,k8s.io/api)'; \
   [ -n "$$v" ] || { echo "Set ENVTEST_K8S_VERSION manually (k8s.io/api replace has no tag)" >&2; exit 1; }; \
   printf '%s\n' "$$v" | sed -E 's/^v?[0-9]+\.([0-9]+).*/1.\1/')
 
-GOLANGCI_LINT_VERSION ?= v2.7.2
+GOLANGCI_LINT_VERSION ?= v2.14.0
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
 $(KUSTOMIZE): $(LOCALBIN)

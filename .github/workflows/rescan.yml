@@ -1,0 +1,58 @@
+name: Rescan
+
+# A clean scan at push time says nothing about CVEs published afterwards.
+# Rescan the published image and the source weekly; a failed run is the alert.
+on:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  image:
+    name: Trivy (published image)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      # The package is public, so pulling needs no credentials.
+      - name: Scan ghcr.io image built from main
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.75.0
+          scan-type: image
+          image-ref: ghcr.io/${{ github.repository }}:latest
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+
+      # Without a platform, Trivy scans the runner's (amd64) variant only.
+      - name: Scan the arm64 variant
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_PLATFORM: linux/arm64
+        with:
+          version: v0.75.0
+          scan-type: image
+          image-ref: ghcr.io/${{ github.repository }}:latest
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+
+  govulncheck:
+    name: govulncheck (main)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Run govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...

@@ -158,16 +158,16 @@ Test coverage — every package `make test` reports, unabridged (Ginkgo + envtes
 running a real kube-apiserver and etcd, not a fake client):
 
 ```
-internal/webhook/v1alpha1   98.5%
-internal/controller         75.2%
-internal/provider           62.6%
-api/v1alpha1                 3.5%
+internal/webhook/v1alpha1   98.7%
+internal/controller         77.5%
+internal/provider           68.6%
+api/v1alpha1                 3.2%
 cmd                          0.0%
 test/utils                   0.0%
 ```
 
 The low ones need explaining rather than hiding. `api/v1alpha1` is dominated by
-650 lines of generated `zz_generated.deepcopy.go`; the hand-written part is
+700 lines of generated `zz_generated.deepcopy.go`; the hand-written part is
 `conditions.go`, which is at 100% (`conditions_test.go`) and is the part that
 matters — the reconciler skips its status write when those helpers report no
 change, so a bug there turns the 5-minute resync into a write per Application per
@@ -176,8 +176,51 @@ under `test/e2e`, neither has unit tests. `internal/provider` is the lowest
 number that reflects real risk: its error and capability paths run through
 `MockProvider` rather than against a live CNPG install.
 
-128 Ginkgo specs — most against envtest — plus 43 Go test functions, and a
+155 Ginkgo specs — most against envtest — plus 62 Go test functions, and a
 Kind-based e2e suite under `test/e2e`.
+
+---
+
+## Upgrading from a release before the October 2026 security fixes
+
+This is not a drop-in upgrade. The first reconcile after the new manager
+starts changes running workloads:
+
+- Every generated Deployment rolls once, because every pod template gains
+  `seccompProfile: RuntimeDefault`, `allowPrivilegeEscalation: false` and
+  `automountServiceAccountToken: false`.
+- `DATABASE_URL` in every `<app>-db-credentials` Secret changes from
+  `sslmode=disable` to `sslmode=require`, and the pods started by that roll
+  read the new value straight away.
+- Each `RabbitmqCluster` moves to `spec.secretBackend.externalSecret`, and the
+  broker pods roll once.
+- The manager exits at startup if `STEWARD_PROVIDER` is unset.
+  `config/default` sets it to `kubernetes`; custom deployments must set it.
+
+Do this before you deploy the new manager:
+
+1. Apply the new CRD while the old manager is still running (`make install`,
+   or `kubectl apply -f config/crd/bases/`). The opt-outs below do not exist
+   in the old CRD, and the API server would silently drop them.
+2. Set the opt-outs each Application needs:
+
+   | If the Application... | Set before upgrading | Otherwise |
+   |---|---|---|
+   | connects to Postgres with node-postgres (`pg`, Sequelize, TypeORM, Knex) from `DATABASE_URL` | `spec.database.sslMode: disable` | it loses its database as soon as its pod rolls |
+   | calls the Kubernetes API with its ServiceAccount token | `spec.workload.security.automountServiceAccountToken: true` | it starts without a token |
+   | runs setuid binaries such as `sudo` | `spec.workload.security.allowPrivilegeEscalation: true` | those binaries fail |
+   | has a `queue:` block | RabbitMQ Cluster Operator v2.1.0 or later in the cluster | the Application fails with `InfrastructureInvalid` |
+
+3. Deploy the new manager.
+4. Rotate every RabbitMQ password. Earlier releases copied it into the
+   `RabbitmqCluster` spec, a ConfigMap and `Application.status`, so treat it
+   as exposed; the steps are in
+   [docs/credential-injection.md](docs/credential-injection.md#rotate-rabbitmq-passwords-set-by-earlier-releases).
+
+[docs/credential-injection.md](docs/credential-injection.md#upgrading-node-postgres-applications)
+has the node-postgres detail and how to move those applications to TLS later;
+[docs/DESIGN-DECISIONS.md](docs/DESIGN-DECISIONS.md) section 7 has the pod
+hardening.
 
 ---
 
@@ -214,13 +257,17 @@ Requires Go, Docker, `kubectl`, and `kind`.
 # Kind cluster + cert-manager + Prometheus Operator CRDs + CNPG + the Application CRD
 make dev-setup
 
-# Run the controller against the new cluster
+# Run the controller against the new cluster. STEWARD_PROVIDER defaults to
+# mock here, which provisions nothing; STEWARD_PROVIDER=kubernetes drives CNPG.
 make run
 ```
 
 Against an existing Kubernetes 1.28+ cluster, `make install` alone installs the
 CRD; the CNPG, Redis, and RabbitMQ operators must already be present for the
-corresponding spec blocks to provision anything.
+corresponding spec blocks to provision anything. `queue:` needs RabbitMQ
+Cluster Operator v2.1.0 or later; with an older one the Application fails
+with `InfrastructureInvalid` rather than start a broker steward cannot log in
+to.
 
 Then, in another shell:
 
@@ -266,7 +313,7 @@ decided the shape of this operator were not generated: the drift discriminator a
 the top of this README came from watching `CreateOrUpdate` report `Updated` for
 two situations that mean opposite things and working out that `observedGeneration`
 is the only thing that separates them, and the coverage table above still prints
-the 3.5% and the 0.0% with an explanation rather than a chart that flatters them.
+the 3.2% and the 0.0% with an explanation rather than a chart that flatters them.
 To judge the engineering rather than the tooling, read that section and
 [docs/DESIGN-DECISIONS.md](docs/DESIGN-DECISIONS.md).
 
@@ -274,13 +321,15 @@ To judge the engineering rather than the tooling, read that section and
 
 - [docs/DESIGN-DECISIONS.md](docs/DESIGN-DECISIONS.md) — CRD schema rationale,
   idempotency strategy, drift model, ownership and finalizer semantics, partial
-  failure behaviour, known limits
+  failure behaviour, known limits, security boundaries
 - [docs/drift-detection.md](docs/drift-detection.md) — watch propagation,
   correction vs detection, false-positive avoidance
 - [docs/observability.md](docs/observability.md) — controller metrics vs
   generated application monitoring
 - [docs/credential-injection.md](docs/credential-injection.md) — injected
-  environment variables and precedence rules
+  environment variables, precedence rules, database TLS, where passwords live
+- [SECURITY.md](SECURITY.md) — reporting vulnerabilities, what CI scanning
+  catches and misses
 - [docs/dev-cluster-setup.md](docs/dev-cluster-setup.md) — local Kind setup
 
 ## Built with

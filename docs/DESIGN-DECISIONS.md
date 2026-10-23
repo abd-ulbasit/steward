@@ -257,10 +257,23 @@ assertion, so a provider that cannot compare state simply does not implement it.
 ### Owner references do most of the cleanup
 
 Every child — including the CNPG `Cluster`, `RedisFailover`, `RabbitmqCluster`,
-and PVCs — gets `controllerutil.SetControllerReference`. That buys two things:
-Kubernetes garbage-collects children when the Application is deleted, and
-`.Owns()` maps a child event back to its owner so edits and deletions trigger a
-reconcile without polling.
+PVCs, and the `<app>-{db,cache,queue}-credentials` Secrets — gets
+`controllerutil.SetControllerReference` and the steward labels
+(`app.kubernetes.io/managed-by: steward`, `app.kubernetes.io/instance: <app>`).
+That buys two things: Kubernetes garbage-collects children when the Application
+is deleted, and `.Owns()` maps a child event back to its owner so edits and
+deletions trigger a reconcile without polling.
+
+Credential Secrets have one extra rule, because their content is a password the
+database already uses. If a Secret with the expected name exists, steward takes
+it over only when it is controlled by this Application, or when it is an
+orphan left by an older steward release (recognised by the component's operator
+CR existing and being controlled by this Application). Any other Secret is
+refused with an error instead of adopted, so a Secret created ahead of the
+Application cannot choose the database password or redirect `connectionString`.
+Generated keys (`username`, `password`, `database`) are never overwritten while
+they hold a value; derived keys (`host`, `port`, `connectionString`) are
+recomputed from them on every reconcile.
 
 ### So why keep a finalizer?
 
@@ -367,8 +380,163 @@ Stated plainly rather than left for a reviewer to find:
   PersistentVolumeClaim. The spec shape is ahead of the implementation and a
   cloud provider is what would close the gap.
 - **Credentials are plain Kubernetes Secrets.** No External Secrets Operator, no
-  CSI driver, no rotation.
+  CSI driver, no rotation. Derived keys such as `connectionString` follow the
+  stored password (§4), but nothing changes the password itself.
+- **The operator is a highly privileged identity, and Application authors can
+  read any Secret in their namespace through `env`/`envFrom`.** §7 records both
+  and the recommended fixes.
 - **One database per Application, not shareable.** A consequence of §1.
 - **`status.estimatedMonthlyCost` is defined but not populated** by the
   Kubernetes provider — the `CostEstimator` capability exists for a cloud
   provider that has real prices.
+
+---
+
+## 7. Security boundaries
+
+What the operator can reach, what it keeps in memory, and what a tenant can
+make it do on their behalf. Each subsection records the choice, the
+alternative, and why.
+
+### The Secret cache holds only steward's Secrets
+
+`Owns(&corev1.Secret{})` starts a Secret informer, and by default an informer
+lists and watches its type across the whole cluster. The operator process
+therefore held a copy of every Secret in every namespace — other teams' TLS
+keys, ServiceAccount tokens, Helm release payloads — in a pod with a 128Mi
+limit.
+
+**Chosen:** the manager cache selects Secrets by
+`app.kubernetes.io/managed-by=steward` (`provider.CacheOptions`). Every Secret
+the operator reads carries that label: the per-Application Secret and the
+credential Secrets (§4). A cached miss is confirmed with one uncached read
+(`mgr.GetAPIReader()`), so a credential Secret written by an older release
+without labels is still found, adopted, and labelled. Pods are read uncached
+(`client.CacheOptions.DisableFor`), so the operator neither caches every Pod in
+the cluster nor needs the `watch` verb on Pods.
+
+**Alternative:** `DefaultNamespaces` / a `--watch-namespaces` flag. It also
+bounds the cache, but it changes what the operator manages, which is a product
+decision, not a memory fix.
+
+The per-Application Secret (named like the Application) gets the same
+fallback. If someone removes its labels, it drops out of the cache; the
+reconciler finds it with an uncached read and, because the Application
+controls it, puts the labels back and reports it as corrected drift. Without
+that read the cached `Get` would say NotFound and every pass would fail on
+`Create` with `AlreadyExists`.
+
+**Consequence:** an unlabelled Secret that happens to be named exactly like an
+Application, and is not controlled by it, is no longer silently adopted as
+that Application's Secret. The Application goes `Failed` with reason
+`SecretConflict` until the Secret is renamed or deleted.
+
+### The RBAC is still cluster-wide (design note)
+
+**Problem.** The cache change bounds what is in memory, not what the
+ServiceAccount token can do. `manager-role` is a ClusterRole with
+create/update/delete/list/watch on Secrets, Services, ConfigMaps, PVCs and
+Deployments in every namespace (Trivy KSV-0041 critical, KSV-0056 high). Anyone
+holding that token can read or rewrite every Secret in the cluster.
+
+**Options.**
+
+1. *Keep the ClusterRole* (today). Simple; any namespace can host Applications.
+2. *Watch-namespaces flag plus a RoleBinding per namespace.* The manager cache
+   uses `cache.Options.DefaultNamespaces`; the ClusterRole is bound with
+   RoleBindings only in the listed namespaces. A compromise is bounded to those
+   namespaces. Onboarding a namespace becomes a platform-team change.
+3. *Split read and write.* Keep cluster-wide get/list/watch on the operator's
+   own CRDs, but grant Secret verbs only through per-namespace RoleBindings that
+   a namespace admin creates to opt in. Same blast radius as option 2, with
+   onboarding delegated to the namespace.
+4. *Stop reading Secrets at all.* Generate credentials inside the database
+   operators (CNPG and the RabbitMQ operator can) and only reference them. The
+   operator would still need `create` for Redis, and the Secret contents would
+   no longer be uniform.
+
+**Recommendation.** Option 2. It is the standard multi-tenant operator shape,
+it composes with the label-scoped cache, and it can be adopted without changing
+the Application API.
+
+**Migration.** Add `--watch-namespaces` (empty means all, so the default keeps
+today's behaviour); when set, build `DefaultNamespaces` from it and render
+RoleBindings instead of the ClusterRoleBinding from a kustomize overlay.
+envtest runs as cluster-admin, so the change also needs an e2e check that runs
+the manager under its own ServiceAccount to prove the reduced RBAC suffices.
+
+### Tenant pods get baseline hardening by default
+
+The operator's own pod runs under the restricted Pod Security Standard, but the
+Deployments it generated had no security settings at all: the runtime's
+default seccomp profile (Unconfined on most kubelets), privilege escalation
+allowed, and the namespace's default ServiceAccount token mounted in every pod.
+
+**Chosen:** every generated pod gets the settings that do not depend on how the
+image was built — `seccompProfile: RuntimeDefault`,
+`allowPrivilegeEscalation: false`, `automountServiceAccountToken: false` — and
+`spec.workload.security.profile: restricted` opts into `runAsNonRoot: true` and
+`capabilities.drop: [ALL]` on top. Two opt-outs exist for workloads the
+defaults break: `security.allowPrivilegeEscalation: true` (setuid binaries such
+as `sudo`; rejected by the webhook under `restricted`) and
+`security.automountServiceAccountToken: true` (applications that call the
+Kubernetes API). The API exposes a fixed set of fields, not a raw
+`SecurityContext`, so an Application cannot ask for `privileged`, added
+capabilities or host namespaces.
+
+**Alternative:** default to `restricted`. That matches the operator's own pod,
+but `runAsNonRoot` refuses to start any image whose user is root, which
+includes the `nginx` and `postgres` images in `examples/` and
+`config/samples/`, and every existing Application using such an image would
+stop rolling out after an operator upgrade.
+
+**Consequence:** upgrading the operator changes every generated pod template
+once, so each Deployment rolls. Applications that read the ServiceAccount token
+must set the opt-out before upgrading.
+
+### `env` and `envFrom` can read any Secret in the namespace (design note)
+
+**Problem.** `spec.workload.env[].valueFrom.secretKeyRef` and
+`spec.workload.envFrom[].secretRef` are copied into the Deployment unchanged,
+and the Deployment runs `spec.workload.image`, which the Application's author
+chooses. The kubelet resolves those references with its own authority, not the
+author's. Anyone allowed to create or edit Applications in a namespace can
+therefore read every Secret in it — another Application's
+`<app>-db-credentials`, a TLS key, a CI token — by referencing it and running
+an image that prints its environment. Creating a Pod directly has the same
+property, but `application-editor-role` grants neither Pods nor Secrets, so
+steward silently turns "edit Applications" into "read Secrets". The webhook
+validates neither field today.
+
+**Options.**
+
+1. *Document it.* Treat `create applications` as equivalent to `create pods`
+   in RBAC reviews. No code; the gap stays.
+2. *Name or label allow-list in the webhook.* Accept only references to the
+   Application's own Secrets or to Secrets labelled, say,
+   `platform.steward.sh/consumable=true`. Cheap, but the label is set by
+   whoever can edit the Secret, and it breaks every existing `envFrom` of an
+   External Secrets or Sealed Secrets object until it is labelled.
+3. *SubjectAccessReview in the webhook.* For each referenced Secret, ask the
+   API server whether the requesting user (`admission.Request.UserInfo`) may
+   `get` it, and reject the request if not. The rule becomes "you can only
+   inject what you could read yourself". One SAR per newly referenced Secret
+   per admission; the manager needs `create` on
+   `subjectaccessreviews.authorization.k8s.io`.
+4. *ValidatingAdmissionPolicy.* The same check in CEL with the `authorizer`
+   library (`authorizer.group('').resource('secrets').namespace(...).name(...).check('get').allowed()`),
+   installed next to the CRD. No webhook code, but it needs Kubernetes 1.30+
+   and is harder to unit-test.
+
+**Recommendation.** Option 3. It closes the gap without a new labelling
+convention, the webhook and its unit tests already exist, and it keeps working
+when the platform team grants Secret access through ordinary RBAC. ConfigMap
+references can get the same check later; they are lower risk.
+
+**Migration.** Check only references that are new or changed compared with the
+old object, so an unrelated edit by a teammate does not fail on someone else's
+reference. Ship it first as admission warnings, then enforce it behind a
+manager flag, then make enforcement the default in the next minor release.
+Applications already in the cluster are not re-validated until edited; a
+one-off audit (`kubectl auth can-i get secret/<name> --as <author>`) finds
+existing cross-references. The reconcile loop does not change.

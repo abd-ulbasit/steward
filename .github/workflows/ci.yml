@@ -1,9 +1,9 @@
 name: CI
 
 # One workflow so the image push can depend on the checks: the docker job
-# `needs` lint, test, verify-generated, govulncheck and build, and it only runs
-# for pushes to main and v* tags. The Kind e2e suite stays in test-e2e.yml
-# because it takes much longer; make it a required status check on main.
+# `needs` lint, test, verify-generated, govulncheck, build and the Kind e2e
+# suite, and it only runs for pushes to main and v* tags. A commit that fails
+# any of them never publishes an image, even with no branch protection on main.
 #
 # Every action is pinned to a full commit SHA (the trailing comment names the
 # release); Dependabot keeps the pins current.
@@ -110,10 +110,49 @@ jobs:
       - name: Build operator
         run: make build
 
+  e2e:
+    name: Kind e2e
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      # Pinned with checksums from the release's .sha256sum files. Bump all
+      # three together, and the copy in .devcontainer/post-install.sh.
+      KIND_VERSION: v0.33.0
+      KIND_SHA256_AMD64: aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d
+      KIND_SHA256_ARM64: 20022bee6cfcd5086cb7234d218e3454e6090022f2a8f55d1fa7fcf42c3867a2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Install kind
+        run: |
+          arch="$(go env GOARCH)"
+          case "$arch" in
+            amd64) sum="$KIND_SHA256_AMD64" ;;
+            arm64) sum="$KIND_SHA256_ARM64" ;;
+            *) echo "no pinned kind checksum for $arch" >&2; exit 1 ;;
+          esac
+          curl -fsSLo ./kind "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-${arch}"
+          echo "${sum}  ./kind" | sha256sum --check --strict
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+          kind version
+
+      # Runs against the committed go.mod/go.sum; verify-generated reports
+      # drift instead of go mod tidy rewriting it here.
+      - name: Run e2e
+        run: make test-e2e
+
   docker:
     name: Image
     runs-on: ubuntu-latest
-    needs: [lint, test, verify-generated, govulncheck, build]
+    needs: [lint, test, verify-generated, govulncheck, build, e2e]
     if: >-
       github.event_name == 'push' &&
       (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
@@ -146,9 +185,11 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable={{is_default_branch}}
 
-      # Build once for the runner's platform and scan before anything is
-      # pushed. The multi-platform push below reuses the layer cache.
-      - name: Build image for scanning
+      # Build and scan each published platform before anything is pushed.
+      # The arm64 variant has its own base-image manifest and its own Go
+      # binary, so scanning amd64 alone says nothing about it. The push
+      # below rebuilds from the same commit and the same layer cache.
+      - name: Build amd64 image for scanning
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
@@ -159,7 +200,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Scan image (fail on fixable HIGH/CRITICAL)
+      - name: Scan amd64 image (fail on fixable HIGH/CRITICAL)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           version: v0.75.0
@@ -168,6 +209,29 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           # The action defaults to exit-code 0, which reports but never fails.
+          exit-code: '1'
+
+      # The runner's daemon is amd64, so the arm64 image is exported as a
+      # tarball and scanned from the file instead of being loaded. The
+      # Dockerfile cross-compiles in a $BUILDPLATFORM stage, so this needs
+      # no emulation.
+      - name: Build arm64 image for scanning
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/arm64
+          outputs: type=docker,dest=${{ runner.temp }}/steward-arm64.tar
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Scan arm64 image (fail on fixable HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.75.0
+          scan-type: image
+          input: ${{ runner.temp }}/steward-arm64.tar
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
           exit-code: '1'
 
       - name: Log in to GHCR

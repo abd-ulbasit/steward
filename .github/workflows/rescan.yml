@@ -27,6 +27,19 @@ jobs:
           ignore-unfixed: true
           exit-code: '1'
 
+      # Without a platform, Trivy scans the runner's (amd64) variant only.
+      - name: Scan the arm64 variant
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_PLATFORM: linux/arm64
+        with:
+          version: v0.75.0
+          scan-type: image
+          image-ref: ghcr.io/${{ github.repository }}:latest
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+
   govulncheck:
     name: govulncheck (main)
     runs-on: ubuntu-latest

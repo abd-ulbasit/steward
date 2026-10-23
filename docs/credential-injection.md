@@ -88,7 +88,17 @@ copy of the password:
 |---|---|
 | CNPG `Cluster` | `spec.bootstrap.initdb.secret.name` |
 | `RedisFailover` | `spec.auth.secretPath` |
-| `RabbitmqCluster` | `spec.secretBackend.externalSecret.name`; the operator mounts the `default_user.conf` key (RabbitMQ Cluster Operator v2.2.0 or later) |
+| `RabbitmqCluster` | `spec.secretBackend.externalSecret.name`; the operator mounts the `default_user.conf` key (RabbitMQ Cluster Operator v2.1.0 or later) |
+
+RabbitMQ Cluster Operator v2.1.0 is a hard prerequisite for `queue:`. Older
+releases have no `secretBackend` in their CRD, so the API server would drop
+the field and the broker would boot with a default user the operator made up,
+which `AMQP_URL` cannot log in as. Steward checks for this: before creating a
+`RabbitmqCluster` it dry-runs the create, and on every reconcile it reads the
+object back. If `secretBackend` is missing, the Application goes `Failed`
+(`InfrastructureInvalid`) and no `RabbitmqCluster` is created. The error does
+not requeue on its own: after upgrading the RabbitMQ operator, restart the
+steward manager (or change the Application's spec) to retry.
 
 The password is not written into the Deployment, an operator CR, a ConfigMap
 rendered from a CR, or `Application.status`. `status.infrastructure.queue.url`

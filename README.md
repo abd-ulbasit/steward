@@ -221,7 +221,10 @@ make run
 
 Against an existing Kubernetes 1.28+ cluster, `make install` alone installs the
 CRD; the CNPG, Redis, and RabbitMQ operators must already be present for the
-corresponding spec blocks to provision anything.
+corresponding spec blocks to provision anything. `queue:` needs RabbitMQ
+Cluster Operator v2.1.0 or later; with an older one the Application fails
+with `InfrastructureInvalid` rather than start a broker steward cannot log in
+to.
 
 Then, in another shell:
 

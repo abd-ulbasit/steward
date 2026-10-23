@@ -956,7 +956,7 @@ func (p *KubernetesProvider) reconcileQueue(ctx context.Context, app *platformv1
 	port := int32(defaultAMQPPort)
 
 	// The RabbitMQ Cluster Operator reads the default user from this same
-	// Secret (spec.secretBackend.externalSecret, operator v2.2.0+): it
+	// Secret (spec.secretBackend.externalSecret, operator v2.1.0+): it
 	// projects the default_user.conf key into /etc/rabbitmq/conf.d and does
 	// not generate a <queue>-default-user Secret of its own. The password
 	// therefore lives only in Secrets, never in the RabbitmqCluster spec or
@@ -1027,8 +1027,19 @@ func (p *KubernetesProvider) reconcileQueue(ctx context.Context, app *platformv1
 
 		rabbit.Object["spec"] = spec
 		rabbit.SetLabels(labels)
-		return controllerutil.SetControllerReference(app, rabbit, p.scheme)
+		if err := controllerutil.SetControllerReference(app, rabbit, p.scheme); err != nil {
+			return err
+		}
+		if rabbit.GetResourceVersion() == "" {
+			// About to create it: refuse before a broker boots with the
+			// operator's own default user.
+			return p.checkRabbitSecretBackendKept(ctx, rabbit, secretName)
+		}
+		return nil
 	})
+	if IsInvalidConfig(err) {
+		return &QueueState{Phase: ResourceFailed, Type: "rabbitmq", Message: err.Error()}, err
+	}
 	if err != nil {
 		return &QueueState{Phase: ResourceFailed, Type: "rabbitmq"}, &ProvisioningError{
 			ResourceType: "queue",
@@ -1046,6 +1057,11 @@ func (p *KubernetesProvider) reconcileQueue(ctx context.Context, app *platformv1
 			CurrentPhase: ResourceProvisioning,
 			Message:      "rabbitmq status not yet available",
 		}
+	}
+	// Covers a RabbitmqCluster that already existed, which the dry run
+	// above does not probe.
+	if err := rabbitSecretBackendKept(rabbit, secretName); err != nil {
+		return &QueueState{Phase: ResourceFailed, Type: "rabbitmq", Message: err.Error()}, err
 	}
 
 	phase := mapReadyCondition(rabbit)
@@ -1649,6 +1665,41 @@ func mapReadyCondition(resource *unstructured.Unstructured) ResourcePhase {
 	}
 
 	return ResourceProvisioning
+}
+
+// RabbitMQ Cluster Operator releases before v2.1.0 have no
+// spec.secretBackend in their CRD schema, so the API server silently prunes
+// it. The broker then boots with a default user the operator generated, the
+// injected AMQP_URL fails authentication, and nothing else reports it.
+
+// checkRabbitSecretBackendKept dry-runs the create of desired and fails when
+// the API server would drop spec.secretBackend.externalSecret.
+func (p *KubernetesProvider) checkRabbitSecretBackendKept(
+	ctx context.Context,
+	desired *unstructured.Unstructured,
+	secretName string,
+) error {
+	probe := desired.DeepCopy()
+	if err := p.client.Create(ctx, probe, client.DryRunAll); err != nil {
+		return err
+	}
+	return rabbitSecretBackendKept(probe, secretName)
+}
+
+// rabbitSecretBackendKept fails when rabbit, as stored or as it would be
+// stored, does not point spec.secretBackend.externalSecret at secretName.
+func rabbitSecretBackendKept(rabbit *unstructured.Unstructured, secretName string) error {
+	ref, _, _ := unstructured.NestedString(rabbit.Object, "spec", "secretBackend", "externalSecret", "name")
+	if ref == secretName {
+		return nil
+	}
+	return &InvalidConfigError{
+		ResourceType: "operator",
+		Field:        "crd",
+		Value:        rabbitmqClusterGVK.Kind,
+		Message: "the installed RabbitmqCluster CRD drops spec.secretBackend.externalSecret, so the broker " +
+			"would not use the credentials steward injects; install RabbitMQ Cluster Operator v2.1.0 or later",
+	}
 }
 
 func rabbitmqReady(resource *unstructured.Unstructured) (bool, string) {

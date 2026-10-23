@@ -69,10 +69,14 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"net"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -501,27 +505,27 @@ func (p *KubernetesProvider) reconcileDatabase(ctx context.Context, app *platfor
 	dbName := fmt.Sprintf("%s-db", app.Name)
 	secretName := fmt.Sprintf("%s-db-credentials", app.Name)
 
-	// Ensure credentials Secret exists (do not overwrite if already created).
 	username := sanitizeIdentifier(app.Name)
-	password, err := p.ensureSecret(ctx, ns, secretName, map[string][]byte{
-		"username": []byte(username),
-		"password": []byte(randomPassword(24)),
-		"database": []byte(app.Name),
-	})
-	if err != nil {
-		return &DatabaseState{Phase: ResourceFailed, Engine: "postgres"}, err
-	}
-
 	host := fmt.Sprintf("%s-rw.%s.svc", dbName, ns) // CNPG standard service name
 	port := int32(defaultDatabasePort)
-	conn := fmt.Sprintf("postgresql://%s:%s@%s:%d/%s?sslmode=disable",
-		username, password, host, port, app.Name)
 
-	// Store derived connection info in the Secret (idempotent if already set).
-	if err := p.ensureSecretData(ctx, ns, secretName, map[string][]byte{
-		"host":             []byte(host),
-		"port":             []byte(fmt.Sprintf("%d", port)),
-		"connectionString": []byte(conn),
+	if _, err := p.ensureCredentialSecret(ctx, app, credentialSecret{
+		name: secretName,
+		generated: map[string][]byte{
+			"username": []byte(username),
+			"password": []byte(randomPassword(24)),
+			"database": []byte(app.Name),
+		},
+		derive: func(data map[string][]byte) map[string][]byte {
+			return map[string][]byte{
+				"host": []byte(host),
+				"port": []byte(strconv.Itoa(int(port))),
+				"connectionString": []byte(postgresConnectionString(
+					string(data["username"]), string(data["password"]), host, port, string(data["database"]))),
+			}
+		},
+		ownerGVK:  cnpgClusterGVK,
+		ownerName: dbName,
 	}); err != nil {
 		return &DatabaseState{Phase: ResourceFailed, Engine: "postgres"}, err
 	}
@@ -544,7 +548,7 @@ func (p *KubernetesProvider) reconcileDatabase(ctx context.Context, app *platfor
 	cluster.SetNamespace(ns)
 
 	labels := p.buildLabels(app)
-	_, err = controllerutil.CreateOrUpdate(ctx, p.client, cluster, func() error {
+	_, err := controllerutil.CreateOrUpdate(ctx, p.client, cluster, func() error {
 		spec := map[string]interface{}{
 			"instances": instances,
 			"storage": map[string]interface{}{
@@ -718,20 +722,23 @@ func (p *KubernetesProvider) reconcileCache(ctx context.Context, app *platformv1
 	cacheName := fmt.Sprintf("%s-cache", app.Name)
 	secretName := fmt.Sprintf("%s-cache-credentials", app.Name)
 
-	password, err := p.ensureSecret(ctx, ns, secretName, map[string][]byte{
-		"password": []byte(randomPassword(24)),
-	})
-	if err != nil {
-		return &CacheState{Phase: ResourceFailed, Engine: "redis"}, err
-	}
-
 	host := fmt.Sprintf("%s.%s.svc", cacheName, ns)
 	port := int32(defaultRedisPort)
-	conn := fmt.Sprintf("redis://:%s@%s:%d/0", password, host, port)
-	if err := p.ensureSecretData(ctx, ns, secretName, map[string][]byte{
-		"host":             []byte(host),
-		"port":             []byte(fmt.Sprintf("%d", port)),
-		"connectionString": []byte(conn),
+
+	if _, err := p.ensureCredentialSecret(ctx, app, credentialSecret{
+		name: secretName,
+		generated: map[string][]byte{
+			"password": []byte(randomPassword(24)),
+		},
+		derive: func(data map[string][]byte) map[string][]byte {
+			return map[string][]byte{
+				"host":             []byte(host),
+				"port":             []byte(strconv.Itoa(int(port))),
+				"connectionString": []byte(redisConnectionString(string(data["password"]), host, port)),
+			}
+		},
+		ownerGVK:  redisFailoverGVK,
+		ownerName: cacheName,
 	}); err != nil {
 		return &CacheState{Phase: ResourceFailed, Engine: "redis"}, err
 	}
@@ -747,7 +754,7 @@ func (p *KubernetesProvider) reconcileCache(ctx context.Context, app *platformv1
 	}
 
 	labels := p.buildLabels(app)
-	_, err = controllerutil.CreateOrUpdate(ctx, p.client, redis, func() error {
+	_, err := controllerutil.CreateOrUpdate(ctx, p.client, redis, func() error {
 		spec := map[string]interface{}{
 			"redis": map[string]interface{}{
 				"replicas": replicas,
@@ -925,25 +932,31 @@ func (p *KubernetesProvider) reconcileQueue(ctx context.Context, app *platformv1
 	queueName := fmt.Sprintf("%s-queue", app.Name)
 	secretName := fmt.Sprintf("%s-queue-credentials", app.Name)
 
-	username := sanitizeIdentifier(app.Name)
-	password, err := p.ensureSecret(ctx, ns, secretName, map[string][]byte{
-		"username": []byte(username),
-		"password": []byte(randomPassword(24)),
+	host := fmt.Sprintf("%s.%s.svc", queueName, ns)
+	port := int32(defaultAMQPPort)
+
+	creds, err := p.ensureCredentialSecret(ctx, app, credentialSecret{
+		name: secretName,
+		generated: map[string][]byte{
+			"username": []byte(sanitizeIdentifier(app.Name)),
+			"password": []byte(randomPassword(24)),
+		},
+		derive: func(data map[string][]byte) map[string][]byte {
+			return map[string][]byte{
+				"host": []byte(host),
+				"port": []byte(strconv.Itoa(int(port))),
+				"connectionString": []byte(amqpConnectionString(
+					string(data["username"]), string(data["password"]), host, port)),
+			}
+		},
+		ownerGVK:  rabbitmqClusterGVK,
+		ownerName: queueName,
 	})
 	if err != nil {
 		return &QueueState{Phase: ResourceFailed, Type: "rabbitmq"}, err
 	}
-
-	host := fmt.Sprintf("%s.%s.svc", queueName, ns)
-	port := int32(defaultAMQPPort)
-	conn := fmt.Sprintf("amqp://%s:%s@%s:%d/", username, password, host, port)
-	if err := p.ensureSecretData(ctx, ns, secretName, map[string][]byte{
-		"host":             []byte(host),
-		"port":             []byte(fmt.Sprintf("%d", port)),
-		"connectionString": []byte(conn),
-	}); err != nil {
-		return &QueueState{Phase: ResourceFailed, Type: "rabbitmq"}, err
-	}
+	username, password := string(creds["username"]), string(creds["password"])
+	conn := string(creds["connectionString"])
 
 	rabbit := &unstructured.Unstructured{}
 	rabbit.SetGroupVersionKind(rabbitmqClusterGVK)
@@ -1295,72 +1308,221 @@ func (p *KubernetesProvider) buildLabels(app *platformv1alpha1.Application) map[
 	}
 }
 
-// ensureSecret creates a Secret if it doesn't exist. It returns the password
-// value that should be used in connection strings (generated or existing).
-func (p *KubernetesProvider) ensureSecret(ctx context.Context, namespace, name string, data map[string][]byte) (string, error) {
-	secret := &corev1.Secret{}
-	err := p.client.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, secret)
-	if err == nil {
-		if b, ok := secret.Data["password"]; ok {
-			return string(b), nil
-		}
-		return "", nil
-	}
-	if !apierrors.IsNotFound(err) {
-		return "", err
-	}
+// =============================================================================
+// CREDENTIAL SECRETS
+// =============================================================================
+//
+// Each component keeps its credentials in a Secret named
+// <app>-<component>-credentials. The provider owns these Secrets the same way
+// it owns the operator CRs: they carry the steward labels and a controller
+// owner reference to the Application, so they show up in label-based
+// inventory, are garbage-collected with the Application, and an edit to one
+// triggers a reconcile through Owns(&corev1.Secret{}).
+//
+// The keys fall into two groups:
+//   - generated keys (username, password, database) are written once and never
+//     overwritten while they hold a value. The password has to survive operator
+//     restarts and upgrades, because the database already uses it.
+//   - derived keys (host, port, connectionString) are recomputed from the
+//     generated keys on every reconcile. They cannot drift from the password
+//     they embed, and a change to how they are built (for example the sslmode
+//     in the Postgres DSN) reaches existing Secrets.
+//
+// A Secret that already exists under that name is only taken over when it is
+// provably ours: either it is controlled by this Application, or it is an
+// orphan left by an older steward release that did not set owner references.
+// The second case is recognised by the component's operator CR already
+// existing and being controlled by this Application. Anything else is refused,
+// so a Secret planted ahead of the Application cannot choose the database
+// password.
+// =============================================================================
 
-	secret = &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-		},
-		Type: corev1.SecretTypeOpaque,
-		Data: data,
-	}
-
-	if err := p.client.Create(ctx, secret); err != nil {
-		return "", err
-	}
-
-	if b, ok := data["password"]; ok {
-		return string(b), nil
-	}
-	return "", nil
+// credentialSecret describes one credential Secret.
+type credentialSecret struct {
+	// name is the Secret name.
+	name string
+	// generated holds the keys to write when they are missing or empty.
+	generated map[string][]byte
+	// derive returns the keys computed from the final generated keys.
+	derive func(data map[string][]byte) map[string][]byte
+	// ownerGVK and ownerName identify the operator CR this Secret belongs to.
+	// They decide whether an orphaned Secret may be adopted.
+	ownerGVK  schema.GroupVersionKind
+	ownerName string
 }
 
-// ensureSecretData adds data keys if missing, without overwriting existing values.
-func (p *KubernetesProvider) ensureSecretData(ctx context.Context, namespace, name string, data map[string][]byte) error {
+// ensureCredentialSecret creates or updates a credential Secret and returns
+// its data after the update.
+func (p *KubernetesProvider) ensureCredentialSecret(
+	ctx context.Context,
+	app *platformv1alpha1.Application,
+	spec credentialSecret,
+) (map[string][]byte, error) {
+	ns := p.resolveNamespace(app)
+
 	secret := &corev1.Secret{}
-	if err := p.client.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, secret); err != nil {
-		if apierrors.IsNotFound(err) {
-			return &NotReadyError{
-				ResourceType: "secret",
-				ResourceID:   name,
-				CurrentPhase: ResourceProvisioning,
-				Message:      "secret not yet visible in cache",
-			}
-		}
-		return err
+	found, err := p.getSecret(ctx, ns, spec.name, secret)
+	if err != nil {
+		return nil, err
 	}
 
+	if !found {
+		secret = &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: spec.name, Namespace: ns},
+			Type:       corev1.SecretTypeOpaque,
+		}
+		if err := p.applyCredentialSecret(app, secret, spec); err != nil {
+			return nil, err
+		}
+		if err := p.client.Create(ctx, secret); err != nil {
+			if apierrors.IsAlreadyExists(err) {
+				// Someone created it between our read and our write. The next
+				// pass reads it and runs the adoption checks.
+				return nil, &NotReadyError{
+					ResourceType: "secret",
+					ResourceID:   spec.name,
+					CurrentPhase: ResourceProvisioning,
+					Message:      "secret was created concurrently; retrying",
+				}
+			}
+			return nil, err
+		}
+		return secret.Data, nil
+	}
+
+	if err := p.checkSecretAdoptable(ctx, app, secret, spec); err != nil {
+		return nil, err
+	}
+
+	before := secret.DeepCopy()
+	if err := p.applyCredentialSecret(app, secret, spec); err != nil {
+		return nil, err
+	}
+	if !equality.Semantic.DeepEqual(before, secret) {
+		if err := p.client.Update(ctx, secret); err != nil {
+			return nil, err
+		}
+	}
+	return secret.Data, nil
+}
+
+// applyCredentialSecret fills missing generated keys, recomputes derived keys,
+// and sets labels and the controller reference. It does not write.
+func (p *KubernetesProvider) applyCredentialSecret(
+	app *platformv1alpha1.Application,
+	secret *corev1.Secret,
+	spec credentialSecret,
+) error {
 	if secret.Data == nil {
 		secret.Data = map[string][]byte{}
 	}
-
-	changed := false
-	for k, v := range data {
-		if _, exists := secret.Data[k]; !exists {
+	for k, v := range spec.generated {
+		if len(secret.Data[k]) == 0 {
 			secret.Data[k] = v
-			changed = true
+		}
+	}
+	if spec.derive != nil {
+		for k, v := range spec.derive(secret.Data) {
+			secret.Data[k] = v
 		}
 	}
 
-	if !changed {
-		return nil
+	if secret.Labels == nil {
+		secret.Labels = map[string]string{}
+	}
+	for k, v := range p.buildLabels(app) {
+		secret.Labels[k] = v
+	}
+	return controllerutil.SetControllerReference(app, secret, p.scheme)
+}
+
+// checkSecretAdoptable decides whether an existing Secret may be managed as
+// this Application's credential Secret. See the section comment above.
+func (p *KubernetesProvider) checkSecretAdoptable(
+	ctx context.Context,
+	app *platformv1alpha1.Application,
+	secret *corev1.Secret,
+	spec credentialSecret,
+) error {
+	if owner := metav1.GetControllerOf(secret); owner != nil {
+		if owner.UID == app.UID {
+			return nil
+		}
+		return &ProvisioningError{
+			ResourceType: "secret",
+			ResourceID:   spec.name,
+			Operation:    "adopt",
+			Message: fmt.Sprintf("secret is controlled by %s %s; refusing to take it over",
+				owner.Kind, owner.Name),
+		}
 	}
 
-	return p.client.Update(ctx, secret)
+	infra := &unstructured.Unstructured{}
+	infra.SetGroupVersionKind(spec.ownerGVK)
+	err := p.client.Get(ctx, client.ObjectKey{Name: spec.ownerName, Namespace: secret.Namespace}, infra)
+	if err == nil && metav1.IsControlledBy(infra, app) {
+		// Orphan written by a steward release that did not set owner
+		// references. Its password is already in use by the operator CR.
+		return nil
+	}
+	if err != nil && !apierrors.IsNotFound(err) {
+		return err
+	}
+
+	return &ProvisioningError{
+		ResourceType: "secret",
+		ResourceID:   spec.name,
+		Operation:    "adopt",
+		Message: "a Secret with this name already exists and was not created by steward for this " +
+			"Application; steward will not reuse credentials it did not generate. Delete the Secret " +
+			"and steward will create a new one",
+	}
+}
+
+// getSecret reads a Secret and reports whether it exists.
+func (p *KubernetesProvider) getSecret(ctx context.Context, namespace, name string, secret *corev1.Secret) (bool, error) {
+	err := p.client.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, secret)
+	if err == nil {
+		return true, nil
+	}
+	if apierrors.IsNotFound(err) {
+		return false, nil
+	}
+	return false, err
+}
+
+// postgresConnectionString builds the DSN stored under connectionString.
+func postgresConnectionString(username, password, host string, port int32, database string) string {
+	u := url.URL{
+		Scheme:   "postgresql",
+		User:     url.UserPassword(username, password),
+		Host:     net.JoinHostPort(host, strconv.Itoa(int(port))),
+		Path:     "/" + database,
+		RawQuery: "sslmode=disable",
+	}
+	return u.String()
+}
+
+// redisConnectionString builds the URL stored under connectionString.
+func redisConnectionString(password, host string, port int32) string {
+	u := url.URL{
+		Scheme: "redis",
+		User:   url.UserPassword("", password),
+		Host:   net.JoinHostPort(host, strconv.Itoa(int(port))),
+		Path:   "/0",
+	}
+	return u.String()
+}
+
+// amqpConnectionString builds the URL stored under connectionString.
+func amqpConnectionString(username, password, host string, port int32) string {
+	u := url.URL{
+		Scheme: "amqp",
+		User:   url.UserPassword(username, password),
+		Host:   net.JoinHostPort(host, strconv.Itoa(int(port))),
+		Path:   "/",
+	}
+	return u.String()
 }
 
 func (p *KubernetesProvider) deleteSecret(ctx context.Context, namespace, name string) error {

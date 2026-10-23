@@ -257,10 +257,23 @@ assertion, so a provider that cannot compare state simply does not implement it.
 ### Owner references do most of the cleanup
 
 Every child — including the CNPG `Cluster`, `RedisFailover`, `RabbitmqCluster`,
-and PVCs — gets `controllerutil.SetControllerReference`. That buys two things:
-Kubernetes garbage-collects children when the Application is deleted, and
-`.Owns()` maps a child event back to its owner so edits and deletions trigger a
-reconcile without polling.
+PVCs, and the `<app>-{db,cache,queue}-credentials` Secrets — gets
+`controllerutil.SetControllerReference` and the steward labels
+(`app.kubernetes.io/managed-by: steward`, `app.kubernetes.io/instance: <app>`).
+That buys two things: Kubernetes garbage-collects children when the Application
+is deleted, and `.Owns()` maps a child event back to its owner so edits and
+deletions trigger a reconcile without polling.
+
+Credential Secrets have one extra rule, because their content is a password the
+database already uses. If a Secret with the expected name exists, steward takes
+it over only when it is controlled by this Application, or when it is an
+orphan left by an older steward release (recognised by the component's operator
+CR existing and being controlled by this Application). Any other Secret is
+refused with an error instead of adopted, so a Secret created ahead of the
+Application cannot choose the database password or redirect `connectionString`.
+Generated keys (`username`, `password`, `database`) are never overwritten while
+they hold a value; derived keys (`host`, `port`, `connectionString`) are
+recomputed from them on every reconcile.
 
 ### So why keep a finalizer?
 
